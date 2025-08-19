@@ -148,7 +148,10 @@ def check_price():
                         direction = "gestiegen" if change > 0 else "gefallen"
                         bot.send_message(
                             cid,
-                            f"📊 {sym} ist um {change:.2f}% {direction} (Schwelle {percent}%)",
+                            (
+                                f"📊 {sym}: Preis ist von {base_price:.2f} auf {price:.2f} {direction} "
+                                f"({change:+.2f}%, Schwelle {percent}%). Basispreis aktualisiert."
+                            ),
                         )
                         chart = generate_buy_sell_chart(sym)
                         if chart:
