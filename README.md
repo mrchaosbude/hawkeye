@@ -1,6 +1,6 @@
 # Hawkeye Telegram Bot
 
-Hawkeye ist ein einfacher Telegram-Bot, der Kryptowährungspreise überwacht und dich per Nachricht informiert, wenn dein Stop-Loss oder Take-Profit erreicht wird. Der Preis wird in regelmäßigen Abständen über die Binance Futures API abgefragt.
+Hawkeye ist ein einfacher Telegram-Bot, der Kryptowährungspreise überwacht und dich per Nachricht informiert, wenn dein Stop-Loss oder Take-Profit erreicht wird. Jeder Benutzer kann mehrere Symbole gleichzeitig beobachten. Der Preis wird in regelmäßigen Abständen über die Binance Futures API abgefragt.
 
 ## Voraussetzungen
 
@@ -29,7 +29,8 @@ python hawkeye.py
 
 Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 
-- `/set SYMBOL STOP_LOSS TAKE_PROFIT` – Konfiguration setzen, z. B. `/set BTCUSDT 42000 46000`
+- `/set SYMBOL STOP_LOSS TAKE_PROFIT` – Symbol hinzufügen oder aktualisieren, z. B. `/set BTCUSDT 42000 46000`
+- `/remove SYMBOL` – Symbol entfernen
 - `/stop` – Benachrichtigungen deaktivieren
 - `/start` – Benachrichtigungen aktivieren
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
