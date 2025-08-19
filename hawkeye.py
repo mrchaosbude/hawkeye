@@ -140,6 +140,21 @@ def check_price():
                     chart = generate_buy_sell_chart(sym)
                     if chart:
                         bot.send_photo(cid, chart)
+                percent = data.get("percent")
+                base_price = data.get("base_price")
+                if percent is not None and base_price is not None:
+                    change = (price - base_price) / base_price * 100
+                    if abs(change) >= percent:
+                        direction = "gestiegen" if change > 0 else "gefallen"
+                        bot.send_message(
+                            cid,
+                            f"📊 {sym} ist um {change:.2f}% {direction} (Schwelle {percent}%)",
+                        )
+                        chart = generate_buy_sell_chart(sym)
+                        if chart:
+                            bot.send_photo(cid, chart)
+                        data["base_price"] = price
+                        save_config()
 
 
 def check_updates():
@@ -184,6 +199,34 @@ def set_config(message):
     bot.reply_to(
         message,
         f"✅ Konfiguration für {new_symbol.upper()} aktualisiert."
+    )
+
+
+@bot.message_handler(commands=["percent"])
+def set_percent_command(message):
+    """Prozentuale Preisänderung überwachen."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 2:
+        bot.reply_to(message, "⚠ Nutzung: /percent SYMBOL PROZENT")
+        return
+    symbol, pct_str = parts
+    try:
+        percent = float(pct_str)
+    except ValueError:
+        bot.reply_to(message, "⚠ Prozent muss eine Zahl sein. Nutzung: /percent SYMBOL PROZENT")
+        return
+    price = get_price(symbol.upper())
+    if price is None:
+        bot.reply_to(message, f"⚠ Preis für {symbol.upper()} konnte nicht abgerufen werden.")
+        return
+    entry = cfg.setdefault("symbols", {}).setdefault(symbol.upper(), {})
+    entry["percent"] = percent
+    entry["base_price"] = price
+    save_config()
+    bot.reply_to(
+        message,
+        f"📊 Prozent-Alarm für {symbol.upper()} bei ±{percent}% gesetzt (Basis {price}).",
     )
 
 
@@ -232,6 +275,7 @@ def show_menu(message):
         "📋 Menü:",
         "/set SYMBOL STOP_LOSS TAKE_PROFIT - Symbol hinzufügen/ändern",
         "/remove SYMBOL - Symbol entfernen",
+        "/percent SYMBOL PROZENT - Alarm bei ±PROZENT Preisänderung",
         "/stop - Benachrichtigungen deaktivieren",
         "/start - Benachrichtigungen aktivieren",
         "/menu - Dieses Menü anzeigen",
@@ -240,9 +284,12 @@ def show_menu(message):
         "Aktuelle Konfiguration:",
     ]
     for sym, data in cfg.get("symbols", {}).items():
-        lines.append(
-            f"{sym}: Stop-Loss {data['stop_loss']}, Take-Profit {data['take_profit']}"
-        )
+        sl = data.get("stop_loss", "-")
+        tp = data.get("take_profit", "-")
+        line = f"{sym}: Stop-Loss {sl}, Take-Profit {tp}"
+        if "percent" in data:
+            line += f", Prozent-Alarm {data['percent']}% (Basis {data.get('base_price')})"
+        lines.append(line)
     lines.append(f"Benachrichtigungen: {status}")
     lines.append(f"Prüfintervall: {check_interval} Minuten")
     bot.reply_to(message, "\n".join(lines))

@@ -31,6 +31,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 
 - `/set SYMBOL STOP_LOSS TAKE_PROFIT` – Symbol hinzufügen oder aktualisieren, z. B. `/set BTCUSDT 42000 46000`
 - `/remove SYMBOL` – Symbol entfernen
+- `/percent SYMBOL PROZENT` – Benachrichtigung bei ±PROZENT Preisänderung
 - `/stop` – Benachrichtigungen deaktivieren
 - `/start` – Benachrichtigungen aktivieren
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
