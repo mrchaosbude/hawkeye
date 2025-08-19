@@ -68,18 +68,42 @@ def get_price(sym):
 
 
 def generate_buy_sell_chart(sym):
+    """Erstellt ein Orderbuch-Diagramm mit den 20 oberen Kauf- und Verkaufsaufträgen."""
     try:
+        # Orderbuch-Daten abrufen (20 Level)
         r = requests.get(
-            "https://fapi.binance.com/fapi/v1/ticker/24hr", params={"symbol": sym}
+            "https://fapi.binance.com/fapi/v1/depth", params={"symbol": sym, "limit": 20}
         )
         r.raise_for_status()
         data = r.json()
-        buy = float(data.get("takerBuyBaseAssetVolume", 0))
-        total = float(data.get("volume", 0))
-        sell = max(total - buy, 0)
+
+        bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
+        asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
+        if not bids or not asks:
+            return None
+
+        mid_price = (bids[0][0] + asks[0][0]) / 2
+
         fig, ax = plt.subplots()
-        ax.bar(["Käufer", "Verkäufer"], [buy, sell], color=["green", "red"])
-        ax.set_title(f"{sym} Käufer vs Verkäufer")
+
+        # Kaufaufträge (Bids) links vom Mid-Preis
+        bid_prices = [p for p, _ in bids]
+        bid_sizes = [q for _, q in bids]
+        ax.bar(bid_prices, bid_sizes, color="green", label="Bids (Buy Orders)")
+
+        # Verkaufsaufträge (Asks) rechts vom Mid-Preis
+        ask_prices = [p for p, _ in asks]
+        ask_sizes = [q for _, q in asks]
+        ax.bar(ask_prices, ask_sizes, color="red", label="Asks (Sell Orders)")
+
+        ax.axvline(mid_price, color="blue", linestyle="--", label=f"Mid Price {mid_price:.2f}")
+
+        ax.set_title(f"{sym} – Orderbuch-Tiefe (20 Level)")
+        ax.set_xlabel("Preis (USDT)")
+        ax.set_ylabel("Ordergröße")
+        ax.legend()
+        fig.tight_layout()
+
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
