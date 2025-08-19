@@ -1,17 +1,15 @@
 import os
 import json
-import hmac
-import hashlib
-from urllib.parse import urlencode
 import requests
 import telebot
 import schedule
 import time
 import threading
+import subprocess
+import sys
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
-BINANCE_BALANCE_URL = "https://fapi.binance.com/fapi/v2/balance"
 CONFIG_FILE = "config.json"
 
 
@@ -42,8 +40,6 @@ def get_user(chat_id):
             "stop_loss": 42000.0,
             "take_profit": 46000.0,
             "notifications": True,
-            "api_key": "",
-            "api_secret": "",
         }
         save_config()
     return users[cid]
@@ -55,22 +51,6 @@ def get_price(sym):
         r = requests.get(BINANCE_PRICE_URL, params={"symbol": sym})
         r.raise_for_status()
         return float(r.json()["markPrice"])
-    except Exception:
-        return None
-
-
-def get_balance(api_key, api_secret):
-    try:
-        params = {"timestamp": int(time.time() * 1000)}
-        query = urlencode(params)
-        signature = hmac.new(api_secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-        params["signature"] = signature
-        headers = {"X-MBX-APIKEY": api_key}
-        r = requests.get(BINANCE_BALANCE_URL, params=params, headers=headers)
-        r.raise_for_status()
-        data = r.json()
-        usdt = next((float(a["balance"]) for a in data if a.get("asset") == "USDT"), None)
-        return usdt
     except Exception:
         return None
 
@@ -88,22 +68,16 @@ def check_price():
                 bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({cfg['symbol']})")
 
 
-last_balances = {}
-
-
-def check_balances():
-    for cid, cfg in users.items():
-        api_key = cfg.get("api_key")
-        api_secret = cfg.get("api_secret")
-        if not api_key or not api_secret:
-            continue
-        bal = get_balance(api_key, api_secret)
-        if bal is None:
-            continue
-        prev = last_balances.get(cid)
-        if prev is None or bal != prev:
-            bot.send_message(cid, f"💰 Guthaben: {bal}")
-            last_balances[cid] = bal
+def check_updates():
+    try:
+        subprocess.run(["git", "fetch"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        local = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+        remote = subprocess.check_output(["git", "rev-parse", "@{u}"]).decode().strip()
+        if local != remote:
+            subprocess.run(["git", "pull"], check=True)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception:
+        pass
 
 
 # === TELEGRAM COMMANDS ===
@@ -147,7 +121,6 @@ def show_menu(message):
         message,
         "📋 Menü:\n"
         "/set SYMBOL STOP_LOSS TAKE_PROFIT - Konfiguration setzen\n"
-        "/register API_KEY API_SECRET - Binance Credentials speichern\n"
         "/stop - Benachrichtigungen deaktivieren\n"
         "/start - Benachrichtigungen aktivieren\n"
         "/menu - Dieses Menü anzeigen\n\n"
@@ -175,21 +148,9 @@ def start_notifications(message):
     bot.reply_to(message, "🔔 Benachrichtigungen aktiviert. Tippe /menu für Hilfe.")
 
 
-@bot.message_handler(commands=['register'])
-def register_user(message):
-    cfg = get_user(message.chat.id)
-    parts = message.text.split()[1:]
-    if len(parts) != 2:
-        bot.reply_to(message, "⚠ Nutzung: /register API_KEY API_SECRET")
-        return
-    cfg["api_key"], cfg["api_secret"] = parts
-    save_config()
-    bot.reply_to(message, "✅ Credentials gespeichert.")
-
-
 # === JOB LOOP ===
 schedule.every(5).minutes.do(check_price)
-schedule.every(5).minutes.do(check_balances)
+schedule.every(5).minutes.do(check_updates)
 
 
 def run_scheduler():
