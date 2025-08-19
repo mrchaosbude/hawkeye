@@ -13,8 +13,8 @@ SYMBOL_BITGET = "BTCUSDT_UMCBL"
 TELEGRAM_TOKEN = "1234567890:ABCdefGhIJKlmNoPQrstUVwxyZ12345678"
 TELEGRAM_CHAT_ID = "123456789"
 
-# Telegram Bot init
-bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode="Markdown")
+# Telegram Bot init (Markdown deaktiviert, um Sonderzeichen nicht zu parsen)
+bot = telebot.TeleBot(TELEGRAM_TOKEN, parse_mode=None)
 
 
 # === API Calls ===
