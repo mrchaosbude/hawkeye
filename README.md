@@ -34,10 +34,11 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/stop` – Benachrichtigungen deaktivieren
 - `/start` – Benachrichtigungen aktivieren
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
+- `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
 
 ## Hinweise
 
-- Die Preise werden alle 5 Minuten geprüft.
+- Die Preise werden standardmäßig alle 5 Minuten geprüft. Über `/interval` lässt sich dieser Wert anpassen.
 - Der Bot aktualisiert sich selbst, wenn neue Commits im Git-Repository vorhanden sind.
 
 ## Lizenz

@@ -1,4 +1,5 @@
 {
   "telegram_token": "DEIN_TELEGRAM_TOKEN",
-  "users": {}
+  "users": {},
+  "check_interval": 5
 }
