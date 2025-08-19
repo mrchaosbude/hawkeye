@@ -17,19 +17,28 @@ CONFIG_FILE = "config.json"
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
-        return {"telegram_token": "", "users": {}}
+        return {"telegram_token": "", "users": {}, "check_interval": 5}
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def save_config():
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump({"telegram_token": TELEGRAM_TOKEN, "users": users}, f, indent=2)
+        json.dump(
+            {
+                "telegram_token": TELEGRAM_TOKEN,
+                "users": users,
+                "check_interval": check_interval,
+            },
+            f,
+            indent=2,
+        )
 
 
 config = load_config()
 TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
+check_interval = config.get("check_interval", 5)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -195,16 +204,47 @@ def remove_symbol(message):
         bot.reply_to(message, f"⚠ {symbol} nicht gefunden.")
 
 
+@bot.message_handler(commands=["interval"])
+def set_interval_command(message):
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, "⚠ Nutzung: /interval MINUTEN")
+        return
+    try:
+        new_interval = int(parts[0])
+        if new_interval <= 0:
+            raise ValueError
+    except ValueError:
+        bot.reply_to(message, "⚠ Intervall muss eine positive Ganzzahl sein.")
+        return
+    global check_interval
+    check_interval = new_interval
+    save_config()
+    schedule_jobs()
+    bot.reply_to(message, f"⏱ Prüfintervall auf {new_interval} Minuten gesetzt.")
+
+
 @bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
     cfg = get_user(message.chat.id)
     status = "an" if cfg.get("notifications", True) else "aus"
-    lines = ["📋 Menü:", "/set SYMBOL STOP_LOSS TAKE_PROFIT - Symbol hinzufügen/ändern", "/remove SYMBOL - Symbol entfernen", "/stop - Benachrichtigungen deaktivieren", "/start - Benachrichtigungen aktivieren", "/menu - Dieses Menü anzeigen", "", "Aktuelle Konfiguration:"]
+    lines = [
+        "📋 Menü:",
+        "/set SYMBOL STOP_LOSS TAKE_PROFIT - Symbol hinzufügen/ändern",
+        "/remove SYMBOL - Symbol entfernen",
+        "/stop - Benachrichtigungen deaktivieren",
+        "/start - Benachrichtigungen aktivieren",
+        "/menu - Dieses Menü anzeigen",
+        "/interval MINUTEN - Prüfintervall setzen",
+        "",
+        "Aktuelle Konfiguration:",
+    ]
     for sym, data in cfg.get("symbols", {}).items():
         lines.append(
             f"{sym}: Stop-Loss {data['stop_loss']}, Take-Profit {data['take_profit']}"
         )
     lines.append(f"Benachrichtigungen: {status}")
+    lines.append(f"Prüfintervall: {check_interval} Minuten")
     bot.reply_to(message, "\n".join(lines))
 
 
@@ -225,8 +265,15 @@ def start_notifications(message):
 
 
 # === JOB LOOP ===
-schedule.every(5).minutes.do(check_price)
-schedule.every(5).minutes.do(check_updates)
+
+
+def schedule_jobs():
+    schedule.clear()
+    schedule.every(check_interval).minutes.do(check_price)
+    schedule.every(check_interval).minutes.do(check_updates)
+
+
+schedule_jobs()
 
 
 def run_scheduler():
