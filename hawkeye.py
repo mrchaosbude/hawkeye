@@ -36,10 +36,20 @@ def get_user(chat_id):
     cid = str(chat_id)
     if cid not in users:
         users[cid] = {
-            "symbol": "BTCUSDT",
-            "stop_loss": 42000.0,
-            "take_profit": 46000.0,
+            "symbols": {
+                "BTCUSDT": {"stop_loss": 42000.0, "take_profit": 46000.0}
+            },
             "notifications": True,
+        }
+        save_config()
+    # Sicherstellen, dass ältere Konfigurationen migriert werden
+    if "symbol" in users[cid]:
+        sym = users[cid].pop("symbol")
+        sl = users[cid].pop("stop_loss", 0.0)
+        tp = users[cid].pop("take_profit", 0.0)
+        users[cid].setdefault("symbols", {})[sym] = {
+            "stop_loss": sl,
+            "take_profit": tp,
         }
         save_config()
     return users[cid]
@@ -60,12 +70,13 @@ def check_price():
     for cid, cfg in users.items():
         if not cfg.get("notifications", True):
             continue
-        price = get_price(cfg["symbol"])
-        if price:
-            if price <= cfg["stop_loss"]:
-                bot.send_message(cid, f"⚠ Stop-Loss erreicht bei {price} ({cfg['symbol']})")
-            elif price >= cfg["take_profit"]:
-                bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({cfg['symbol']})")
+        for sym, data in cfg.get("symbols", {}).items():
+            price = get_price(sym)
+            if price:
+                if price <= data.get("stop_loss", 0):
+                    bot.send_message(cid, f"⚠ Stop-Loss erreicht bei {price} ({sym})")
+                elif price >= data.get("take_profit", 0):
+                    bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({sym})")
 
 
 def check_updates():
@@ -81,9 +92,9 @@ def check_updates():
 
 
 # === TELEGRAM COMMANDS ===
-@bot.message_handler(commands=['set'])
+@bot.message_handler(commands=["set"])
 def set_config(message):
-    """Konfiguration für einen Nutzer setzen."""
+    """Symbol-Konfiguration hinzufügen oder aktualisieren."""
     cfg = get_user(message.chat.id)
     parts = message.text.split()[1:]
     if len(parts) != 3:
@@ -94,42 +105,53 @@ def set_config(message):
         return
     new_symbol, new_stop_loss, new_take_profit = parts
     try:
-        cfg["stop_loss"] = float(new_stop_loss)
-        cfg["take_profit"] = float(new_take_profit)
+        stop_loss = float(new_stop_loss)
+        take_profit = float(new_take_profit)
     except ValueError:
         bot.reply_to(
             message,
             "⚠ Stop-Loss und Take-Profit müssen Zahlen sein. Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT",
         )
         return
-    cfg["symbol"] = new_symbol.upper()
+    cfg.setdefault("symbols", {})[new_symbol.upper()] = {
+        "stop_loss": stop_loss,
+        "take_profit": take_profit,
+    }
     save_config()
     bot.reply_to(
         message,
-        f"✅ Konfiguration aktualisiert:\n"
-        f"Symbol: {cfg['symbol']}\n"
-        f"Stop-Loss: {cfg['stop_loss']}\n"
-        f"Take-Profit: {cfg['take_profit']}",
+        f"✅ Konfiguration für {new_symbol.upper()} aktualisiert."
     )
 
 
-@bot.message_handler(commands=['menu', 'help'])
+@bot.message_handler(commands=["remove"])
+def remove_symbol(message):
+    """Symbol-Konfiguration entfernen."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, "⚠ Nutzung: /remove SYMBOL")
+        return
+    symbol = parts[0].upper()
+    if symbol in cfg.get("symbols", {}):
+        del cfg["symbols"][symbol]
+        save_config()
+        bot.reply_to(message, f"✅ {symbol} entfernt.")
+    else:
+        bot.reply_to(message, f"⚠ {symbol} nicht gefunden.")
+
+
+@bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
     cfg = get_user(message.chat.id)
     status = "an" if cfg.get("notifications", True) else "aus"
-    bot.reply_to(
-        message,
-        "📋 Menü:\n"
-        "/set SYMBOL STOP_LOSS TAKE_PROFIT - Konfiguration setzen\n"
-        "/stop - Benachrichtigungen deaktivieren\n"
-        "/start - Benachrichtigungen aktivieren\n"
-        "/menu - Dieses Menü anzeigen\n\n"
-        f"Aktuelle Konfiguration:\n"
-        f"Symbol: {cfg['symbol']}\n"
-        f"Stop-Loss: {cfg['stop_loss']}\n"
-        f"Take-Profit: {cfg['take_profit']}\n"
-        f"Benachrichtigungen: {status}",
-    )
+    lines = ["📋 Menü:", "/set SYMBOL STOP_LOSS TAKE_PROFIT - Symbol hinzufügen/ändern", "/remove SYMBOL - Symbol entfernen", "/stop - Benachrichtigungen deaktivieren", "/start - Benachrichtigungen aktivieren", "/menu - Dieses Menü anzeigen", "", "Aktuelle Konfiguration:"]
+    for sym, data in cfg.get("symbols", {}).items():
+        lines.append(
+            f"{sym}: Stop-Loss {data['stop_loss']}, Take-Profit {data['take_profit']}"
+        )
+    lines.append(f"Benachrichtigungen: {status}")
+    bot.reply_to(message, "\n".join(lines))
 
 
 @bot.message_handler(commands=['stop'])
