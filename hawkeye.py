@@ -7,6 +7,8 @@ import time
 import threading
 import subprocess
 import sys
+import io
+import matplotlib.pyplot as plt
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -65,6 +67,28 @@ def get_price(sym):
         return None
 
 
+def generate_buy_sell_chart(sym):
+    try:
+        r = requests.get(
+            "https://fapi.binance.com/fapi/v1/ticker/24hr", params={"symbol": sym}
+        )
+        r.raise_for_status()
+        data = r.json()
+        buy = float(data.get("takerBuyBaseAssetVolume", 0))
+        total = float(data.get("volume", 0))
+        sell = max(total - buy, 0)
+        fig, ax = plt.subplots()
+        ax.bar(["Käufer", "Verkäufer"], [buy, sell], color=["green", "red"])
+        ax.set_title(f"{sym} Käufer vs Verkäufer")
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
+
+
 # === FUNKTIONEN: Checks ===
 def check_price():
     for cid, cfg in users.items():
@@ -75,8 +99,14 @@ def check_price():
             if price:
                 if price <= data.get("stop_loss", 0):
                     bot.send_message(cid, f"⚠ Stop-Loss erreicht bei {price} ({sym})")
+                    chart = generate_buy_sell_chart(sym)
+                    if chart:
+                        bot.send_photo(cid, chart)
                 elif price >= data.get("take_profit", 0):
                     bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({sym})")
+                    chart = generate_buy_sell_chart(sym)
+                    if chart:
+                        bot.send_photo(cid, chart)
 
 
 def check_updates():
