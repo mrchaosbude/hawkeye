@@ -1,0 +1,6 @@
+{
+  "telegram_token": "DEIN_TELEGRAM_TOKEN",
+  "version": "1.0.0",
+  "github_repo": "owner/repo",
+  "users": {}
+}
