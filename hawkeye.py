@@ -58,7 +58,7 @@ def send_alert():
 
 
 # === Main Loop ===
-if _name_ == "_main_":
+if __name__ == "__main__":
     while True:
         send_alert()
         time.sleep(300)  # 300 Sekunden = 5 Minuten Intervall
