@@ -36,14 +36,47 @@ def check_price():
 
 # === TELEGRAM COMMANDS ===
 @bot.message_handler(commands=['set'])
-def set_symbol(message):
-    global symbol
+def set_config(message):
+    """Set trading configuration via Telegram command.
+
+    Expected usage:
+        /set SYMBOL STOP_LOSS TAKE_PROFIT
+
+    Example:
+        /set BTCUSDT 40000 45000
+    """
+
+    global symbol, stop_loss, take_profit
+
+    parts = message.text.split()[1:]
+    if len(parts) != 3:
+        bot.reply_to(
+            message,
+            "⚠ Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT (z. B. /set ETHUSDT 40000 45000)",
+        )
+        return
+
+    new_symbol, new_stop_loss, new_take_profit = parts
+
     try:
-        new_symbol = message.text.split()[1].upper()
-        symbol = new_symbol
-        bot.reply_to(message, f"Symbol geändert zu {symbol}")
-    except:
-        bot.reply_to(message, "⚠ Nutzung: /set SYMBOL (z. B. /set ETHUSDT)")
+        stop_loss = float(new_stop_loss)
+        take_profit = float(new_take_profit)
+    except ValueError:
+        bot.reply_to(
+            message,
+            "⚠ Stop-Loss und Take-Profit müssen Zahlen sein. "
+            "Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT",
+        )
+        return
+
+    symbol = new_symbol.upper()
+    bot.reply_to(
+        message,
+        f"✅ Konfiguration aktualisiert:\n"
+        f"Symbol: {symbol}\n"
+        f"Stop-Loss: {stop_loss}\n"
+        f"Take-Profit: {take_profit}",
+    )
 
 # === JOB LOOP ===
 schedule.every(5).minutes.do(check_price)
