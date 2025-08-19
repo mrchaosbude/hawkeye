@@ -130,12 +130,14 @@ def check_price():
         for sym, data in cfg.get("symbols", {}).items():
             price = get_price(sym)
             if price:
-                if price <= data.get("stop_loss", 0):
+                sl = data.get("stop_loss")
+                tp = data.get("take_profit")
+                if sl is not None and sl > 0 and price <= sl:
                     bot.send_message(cid, f"⚠ Stop-Loss erreicht bei {price} ({sym})")
                     chart = generate_buy_sell_chart(sym)
                     if chart:
                         bot.send_photo(cid, chart)
-                elif price >= data.get("take_profit", 0):
+                elif tp is not None and tp > 0 and price >= tp:
                     bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({sym})")
                     chart = generate_buy_sell_chart(sym)
                     if chart:
