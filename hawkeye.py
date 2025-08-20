@@ -369,6 +369,7 @@ def show_menu(message):
         "/start - Benachrichtigungen aktivieren",
         "/menu - Dieses Menü anzeigen",
         "/interval MINUTEN - Prüfintervall setzen",
+        "/top10 - Top 10 Kryptowährungen anzeigen",
         "",
         "Aktuelle Konfiguration:",
     ]
