@@ -20,6 +20,8 @@ COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 COINMARKETCAP_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
 COINPAPRIKA_URL = "https://api.coinpaprika.com/v1/tickers"
 CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/top/mktcapfull"
+BITGET_TICKERS_URL = "https://api.bitget.com/api/spot/v1/market/tickers"
+BITGET_CANDLES_URL = "https://api.bitget.com/api/spot/v1/market/candles"
 
 
 def load_config():
@@ -259,6 +261,34 @@ def get_top10_cryptocompare():
         return []
 
 
+def get_top10_bitget():
+    try:
+        r = requests.get(BITGET_TICKERS_URL, timeout=10)
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        coins = []
+        for item in data:
+            sym = item.get("symbol")
+            close = float(item.get("close", 0))
+            open0 = float(item.get("openUtc0", 0))
+            pct = None
+            if open0:
+                pct = (close - open0) / open0 * 100
+            coins.append(
+                {
+                    "name": sym,
+                    "symbol": sym,
+                    "current_price": close,
+                    "price_change_percentage_24h": pct,
+                    "vol": float(item.get("usdtVol24h", 0)),
+                }
+            )
+        coins.sort(key=lambda c: c.get("vol", 0), reverse=True)
+        return coins[:10]
+    except Exception:
+        return []
+
+
 def get_top10_cryptos():
     if API_PROVIDER == "coinmarketcap":
         return get_top10_coinmarketcap()
@@ -266,6 +296,8 @@ def get_top10_cryptos():
         return get_top10_coinpaprika()
     if API_PROVIDER == "cryptocompare":
         return get_top10_cryptocompare()
+    if API_PROVIDER == "bitget":
+        return get_top10_bitget()
     if API_PROVIDER == "coingecko":
         return get_top10_coingecko()
     return []
@@ -382,6 +414,23 @@ def generate_top10_chart(coins):
                         c = item.get("close")
                         if None not in (t, o, h, l, c):
                             ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
+                except Exception:
+                    ohlc_data = []
+            elif API_PROVIDER == "bitget":
+                symbol = coin.get("symbol")
+                try:
+                    r = requests.get(
+                        BITGET_CANDLES_URL,
+                        params={"symbol": symbol, "granularity": 3600, "limit": 24},
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    raw = r.json().get("data", [])
+                    # Bitget liefert die aktuellste Kerze zuerst
+                    for item in reversed(raw):
+                        t = int(item[0]) / 1000
+                        o, h, l, c = map(float, item[1:5])
+                        ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
                 except Exception:
                     ohlc_data = []
 
