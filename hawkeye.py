@@ -11,6 +11,7 @@ import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
+from datetime import datetime
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -207,7 +208,7 @@ def generate_top10_chart(coins):
                     )
                     for t, o, h, l, c in raw:
                         ohlc_data.append(
-                            [mdates.epoch2num(t / 1000), o, h, l, c]
+                            [mdates.date2num(datetime.utcfromtimestamp(t / 1000)), o, h, l, c]
                         )
                     time.sleep(1)
                     break
