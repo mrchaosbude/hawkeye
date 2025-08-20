@@ -305,7 +305,18 @@ def generate_top10_chart(coins):
                         timeout=10,
                     )
                     r.raise_for_status()
-                    raw = r.json().get("data", {}).get("quotes", [])
+                    # Die CoinMarketCap-API liefert die Daten in einem
+                    # nach Symbolen verschachtelten Objekt. Bisher wurde
+                    # irrtümlich direkt auf "quotes" unter "data"
+                    # zugegriffen, was stets zu einem leeren Ergebnis
+                    # führte und somit keine Kerzen zeichnete. Wir holen
+                    # nun explizit die Quotes für das angefragte Symbol.
+                    raw = (
+                        r.json()
+                        .get("data", {})
+                        .get(symbol, {})
+                        .get("quotes", [])
+                    )
                     for item in raw:
                         usd = item.get("quote", {}).get("USD", {})
                         o = usd.get("open")
@@ -355,8 +366,15 @@ def generate_top10_chart(coins):
                         timeout=10,
                     )
                     r.raise_for_status()
-                    raw = r.json().get("Data", {}).get("Data", [])
-                    for item in raw:
+                    # Die Struktur der Cryptocompare-Antwort variiert je
+                    # nach Endpunkt. Um leere Datensätze zu vermeiden,
+                    # akzeptieren wir sowohl die verschachtelte Form
+                    # {"Data": {"Data": [...]}} als auch eine direkte
+                    # Liste.
+                    raw = r.json().get("Data", {})
+                    if isinstance(raw, dict):
+                        raw = raw.get("Data", [])
+                    for item in raw or []:
                         t = item.get("time")
                         o = item.get("open")
                         h = item.get("high")
