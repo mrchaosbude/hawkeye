@@ -20,7 +20,7 @@ COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
-        return {"telegram_token": "", "users": {}, "check_interval": 5}
+        return {"telegram_token": "", "users": {}, "check_interval": 5, "coingecko_api_key": ""}
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -32,6 +32,7 @@ def save_config():
                 "telegram_token": TELEGRAM_TOKEN,
                 "users": users,
                 "check_interval": check_interval,
+                "coingecko_api_key": COINGECKO_API_KEY,
             },
             f,
             indent=2,
@@ -42,6 +43,7 @@ config = load_config()
 TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
+COINGECKO_API_KEY = config.get("coingecko_api_key", "")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -126,6 +128,9 @@ def generate_buy_sell_chart(sym):
 
 
 def get_top10_cryptos():
+    headers = {}
+    if COINGECKO_API_KEY:
+        headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
     try:
         r = requests.get(
             COINGECKO_MARKETS_URL,
@@ -136,10 +141,17 @@ def get_top10_cryptos():
                 "page": 1,
                 "price_change_percentage": "24h",
             },
+            headers=headers,
             timeout=10,
         )
         r.raise_for_status()
-        return r.json()
+        data = r.json()
+        for coin in data:
+            if "price_change_percentage_24h" not in coin:
+                pct = coin.get("price_change_percentage_24h_in_currency")
+                if pct is not None:
+                    coin["price_change_percentage_24h"] = pct
+        return data
     except Exception:
         return []
 
@@ -369,6 +381,8 @@ def show_top10(message):
     for i, coin in enumerate(coins, start=1):
         price = coin.get("current_price")
         change = coin.get("price_change_percentage_24h")
+        if change is None:
+            change = coin.get("price_change_percentage_24h_in_currency")
         lines.append(
             f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price} USD ({change:+.2f}%)"
         )
