@@ -323,44 +323,46 @@ def get_top10_cryptos():
 
 def generate_top10_chart(coins):
     """Erstellt Candlestick-Charts für die Top-10-Coins."""
+    print(f"[DEBUG] generate_top10_chart using provider {API_PROVIDER}")
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
         for ax, coin in zip(axes, coins):
+            symbol = coin.get("symbol")
+            print(f"[DEBUG] Processing {symbol}")
             ohlc_data = []
             if API_PROVIDER == "coingecko":
                 coin_id = coin.get("id")
                 try:
+                    print(f"[DEBUG] Requesting Coingecko OHLC for {coin_id}")
                     r = requests.get(
                         f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
                         params={"vs_currency": "usd", "days": 1},
                         timeout=10,
                     )
+                    print(f"[DEBUG] Coingecko status {r.status_code}")
                     r.raise_for_status()
                     raw = r.json()
+                    print(f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}")
                     for t, o, h, l, c in raw:
                         ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] Coingecko OHLC error for {symbol}: {e}")
                     ohlc_data = []
             elif API_PROVIDER == "coinmarketcap":
-                symbol = coin.get("symbol")
                 headers = {}
                 if COINMARKETCAP_API_KEY:
                     headers["X-CMC_PRO_API_KEY"] = COINMARKETCAP_API_KEY
                 try:
+                    print(f"[DEBUG] Requesting CoinMarketCap OHLC for {symbol}")
                     r = requests.get(
                         "https://pro-api.coinmarketcap.com/v2/cryptocurrency/ohlcv/historical",
                         params={"symbol": symbol, "count": 24, "interval": "1h"},
                         headers=headers,
                         timeout=10,
                     )
+                    print(f"[DEBUG] CoinMarketCap status {r.status_code} for {symbol}")
                     r.raise_for_status()
-                    # Die CoinMarketCap-API variiert in ihrer
-                    # Struktur: Entweder wird ein nach Symbolen
-                    # verschachteltes Objekt oder eine Liste mit
-                    # Symbolfeldern zurückgegeben. Damit keine
-                    # leeren Datensätze entstehen, durchsuchen wir
-                    # beide Varianten nach den Quotes des Symbols.
                     json_data = r.json().get("data", {})
                     raw = []
                     if isinstance(json_data, dict):
@@ -371,6 +373,7 @@ def generate_top10_chart(coins):
                             if entry.get("symbol") == symbol:
                                 raw = entry.get("quotes", [])
                                 break
+                    print(f"[DEBUG] CoinMarketCap returned {len(raw)} entries for {symbol}")
                     for item in raw:
                         usd = item.get("quote", {}).get("USD", {})
                         o = usd.get("open")
@@ -381,7 +384,8 @@ def generate_top10_chart(coins):
                         if None not in (t, o, h, l, c):
                             dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
                             ohlc_data.append([mdates.date2num(dt), o, h, l, c])
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] CoinMarketCap OHLC error for {symbol}: {e}")
                     ohlc_data = []
             elif API_PROVIDER == "coinpaprika":
                 coin_id = coin.get("id")
@@ -389,13 +393,16 @@ def generate_top10_chart(coins):
                     start = (
                         datetime.datetime.utcnow() - datetime.timedelta(hours=24)
                     ).replace(microsecond=0).isoformat()
+                    print(f"[DEBUG] Requesting CoinPaprika OHLC for {coin_id}")
                     r = requests.get(
                         f"https://api.coinpaprika.com/v1/tickers/{coin_id}/historical",
                         params={"start": start, "interval": "1h", "limit": 24},
                         timeout=10,
                     )
+                    print(f"[DEBUG] CoinPaprika status {r.status_code} for {symbol}")
                     r.raise_for_status()
                     raw = r.json()
+                    print(f"[DEBUG] CoinPaprika returned {len(raw)} entries for {symbol}")
                     for item in raw:
                         o = item.get("open")
                         h = item.get("high")
@@ -405,29 +412,27 @@ def generate_top10_chart(coins):
                         if None not in (t, o, h, l, c):
                             dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
                             ohlc_data.append([mdates.date2num(dt), o, h, l, c])
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] CoinPaprika OHLC error for {symbol}: {e}")
                     ohlc_data = []
             elif API_PROVIDER == "cryptocompare":
-                symbol = coin.get("symbol")
                 headers = {}
                 if CRYPTOCOMPARE_API_KEY:
                     headers["Authorization"] = f"Apikey {CRYPTOCOMPARE_API_KEY}"
                 try:
+                    print(f"[DEBUG] Requesting CryptoCompare OHLC for {symbol}")
                     r = requests.get(
                         "https://min-api.cryptocompare.com/data/v2/histohour",
                         params={"fsym": symbol, "tsym": "USD", "limit": 24},
                         headers=headers,
                         timeout=10,
                     )
+                    print(f"[DEBUG] CryptoCompare status {r.status_code} for {symbol}")
                     r.raise_for_status()
-                    # Die Struktur der Cryptocompare-Antwort variiert je
-                    # nach Endpunkt. Um leere Datensätze zu vermeiden,
-                    # akzeptieren wir sowohl die verschachtelte Form
-                    # {"Data": {"Data": [...]}} als auch eine direkte
-                    # Liste.
                     raw = r.json().get("Data", {})
                     if isinstance(raw, dict):
                         raw = raw.get("Data", [])
+                    print(f"[DEBUG] CryptoCompare returned {len(raw)} entries for {symbol}")
                     for item in raw or []:
                         t = item.get("time")
                         o = item.get("open")
@@ -436,27 +441,32 @@ def generate_top10_chart(coins):
                         c = item.get("close")
                         if None not in (t, o, h, l, c):
                             ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] CryptoCompare OHLC error for {symbol}: {e}")
                     ohlc_data = []
             elif API_PROVIDER == "bitget":
-                symbol = coin.get("symbol")
                 try:
+                    print(f"[DEBUG] Requesting Bitget OHLC for {symbol}")
                     r = requests.get(
                         BITGET_CANDLES_URL,
                         params={"symbol": symbol, "granularity": 3600, "limit": 24},
                         timeout=10,
                     )
+                    print(f"[DEBUG] Bitget status {r.status_code} for {symbol}")
                     r.raise_for_status()
                     raw = r.json().get("data", [])
+                    print(f"[DEBUG] Bitget returned {len(raw)} entries for {symbol}")
                     # Bitget liefert die aktuellste Kerze zuerst
                     for item in reversed(raw):
                         t = int(item[0]) / 1000
                         o, h, l, c = map(float, item[1:5])
                         ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
-                except Exception:
+                except Exception as e:
+                    print(f"[DEBUG] Bitget OHLC error for {symbol}: {e}")
                     ohlc_data = []
 
             if ohlc_data:
+                print(f"[DEBUG] Plotting {symbol} with {len(ohlc_data)} entries")
                 candlestick_ohlc(
                     ax,
                     ohlc_data,
@@ -468,6 +478,7 @@ def generate_top10_chart(coins):
                 ax.set_xticks([])
                 ax.set_yticks([])
             else:
+                print(f"[DEBUG] No OHLC data for {symbol}")
                 ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
             ax.set_title(coin.get("symbol", "").upper())
 
@@ -677,6 +688,7 @@ def show_top10(message):
     if chart:
         bot.send_photo(message.chat.id, chart, caption=text)
     else:
+        print("[DEBUG] show_top10: generate_top10_chart returned no chart")
         bot.reply_to(message, text)
 
 
