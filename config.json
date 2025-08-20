@@ -1,5 +1,6 @@
 {
   "telegram_token": "DEIN_TELEGRAM_TOKEN",
   "users": {},
-  "check_interval": 5
+  "check_interval": 5,
+  "coingecko_api_key": ""
 }
