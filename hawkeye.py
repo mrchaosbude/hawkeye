@@ -11,17 +11,11 @@ import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
-import datetime
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
-COINMARKETCAP_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
-COINPAPRIKA_URL = "https://api.coinpaprika.com/v1/tickers"
-CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/top/mktcapfull"
-BITGET_TICKERS_URL = "https://api.bitget.com/api/spot/v1/market/tickers"
-BITGET_CANDLES_URL = "https://api.bitget.com/api/spot/v1/market/candles"
 
 
 def load_config():
@@ -30,14 +24,11 @@ def load_config():
             "telegram_token": "",
             "users": {},
             "check_interval": 5,
-            "coingecko_api_key": "",
-            "coinmarketcap_api_key": "",
-            "coinpaprika_api_key": "",
-            "cryptocompare_api_key": "",
-            "api_provider": "coingecko",
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        data = json.load(f)
+        data.pop("coingecko_api_key", None)
+        return data
 
 
 def save_config():
@@ -47,11 +38,6 @@ def save_config():
                 "telegram_token": TELEGRAM_TOKEN,
                 "users": users,
                 "check_interval": check_interval,
-                "coingecko_api_key": COINGECKO_API_KEY,
-                "coinmarketcap_api_key": COINMARKETCAP_API_KEY,
-                "coinpaprika_api_key": COINPAPRIKA_API_KEY,
-                "cryptocompare_api_key": CRYPTOCOMPARE_API_KEY,
-                "api_provider": API_PROVIDER,
             },
             f,
             indent=2,
@@ -62,11 +48,6 @@ config = load_config()
 TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
-COINGECKO_API_KEY = config.get("coingecko_api_key", "")
-COINMARKETCAP_API_KEY = config.get("coinmarketcap_api_key", "")
-COINPAPRIKA_API_KEY = config.get("coinpaprika_api_key", "")
-CRYPTOCOMPARE_API_KEY = config.get("cryptocompare_api_key", "")
-API_PROVIDER = config.get("api_provider", "coingecko")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -154,9 +135,6 @@ def generate_buy_sell_chart(sym):
 
 
 def get_top10_coingecko():
-    headers = {}
-    if COINGECKO_API_KEY:
-        headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
     try:
         r = requests.get(
             COINGECKO_MARKETS_URL,
@@ -167,7 +145,6 @@ def get_top10_coingecko():
                 "page": 1,
                 "price_change_percentage": "24h",
             },
-            headers=headers,
             timeout=10,
         )
         r.raise_for_status()
@@ -184,146 +161,16 @@ def get_top10_coingecko():
         return []
 
 
-def get_top10_coinmarketcap():
-    headers = {}
-    if COINMARKETCAP_API_KEY:
-        headers["X-CMC_PRO_API_KEY"] = COINMARKETCAP_API_KEY
-    try:
-        r = requests.get(
-            COINMARKETCAP_URL,
-            params={"start": 1, "limit": 10, "convert": "USD"},
-            headers=headers,
-            timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json().get("data", [])
-        coins = []
-        for coin in data:
-            quote = coin.get("quote", {}).get("USD", {})
-            coins.append(
-                {
-                    "name": coin.get("name"),
-                    "symbol": coin.get("symbol"),
-                    "current_price": quote.get("price"),
-                    "price_change_percentage_24h": quote.get("percent_change_24h"),
-                }
-            )
-        print(f"[DEBUG] get_top10_coinmarketcap returned {len(coins)} coins")
-        return coins
-    except Exception as e:
-        print(f"[DEBUG] get_top10_coinmarketcap error: {e}")
-        return []
-
-
-def get_top10_coinpaprika():
-    try:
-        r = requests.get(COINPAPRIKA_URL, params={"quotes": "USD"}, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        top = [c for c in data if c.get("rank", 0) and c["rank"] <= 10]
-        coins = []
-        for coin in top:
-            quote = coin.get("quotes", {}).get("USD", {})
-            coins.append(
-                {
-                    "id": coin.get("id"),
-                    "name": coin.get("name"),
-                    "symbol": coin.get("symbol"),
-                    "current_price": quote.get("price"),
-                    "price_change_percentage_24h": quote.get("percent_change_24h"),
-                }
-            )
-        print(f"[DEBUG] get_top10_coinpaprika returned {len(coins)} coins")
-        return coins
-    except Exception as e:
-        print(f"[DEBUG] get_top10_coinpaprika error: {e}")
-        return []
-
-
-def get_top10_cryptocompare():
-    headers = {}
-    if CRYPTOCOMPARE_API_KEY:
-        headers["Authorization"] = f"Apikey {CRYPTOCOMPARE_API_KEY}"
-    try:
-        r = requests.get(
-            CRYPTOCOMPARE_URL,
-            params={"limit": 10, "tsym": "USD"},
-            headers=headers,
-            timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json().get("Data", [])
-        coins = []
-        for item in data:
-            info = item.get("CoinInfo", {})
-            raw = item.get("RAW", {}).get("USD", {})
-            coins.append(
-                {
-                    "name": info.get("FullName"),
-                    "symbol": info.get("Name"),
-                    "current_price": raw.get("PRICE"),
-                    "price_change_percentage_24h": raw.get("CHANGEPCT24HOUR"),
-                }
-            )
-        print(f"[DEBUG] get_top10_cryptocompare returned {len(coins)} coins")
-        return coins
-    except Exception as e:
-        print(f"[DEBUG] get_top10_cryptocompare error: {e}")
-        return []
-
-
-def get_top10_bitget():
-    try:
-        r = requests.get(BITGET_TICKERS_URL, timeout=10)
-        r.raise_for_status()
-        data = r.json().get("data", [])
-        coins = []
-        for item in data:
-            sym = item.get("symbol")
-            close = float(item.get("close", 0))
-            open0 = float(item.get("openUtc0", 0))
-            pct = None
-            if open0:
-                pct = (close - open0) / open0 * 100
-            coins.append(
-                {
-                    "name": sym,
-                    "symbol": sym,
-                    "current_price": close,
-                    "price_change_percentage_24h": pct,
-                    "vol": float(item.get("usdtVol24h", 0)),
-                }
-            )
-        coins.sort(key=lambda c: c.get("vol", 0), reverse=True)
-        top10 = coins[:10]
-        print(f"[DEBUG] get_top10_bitget returned {len(top10)} coins")
-        return top10
-    except Exception as e:
-        print(f"[DEBUG] get_top10_bitget error: {e}")
-        return []
-
-
 def get_top10_cryptos():
-    print(f"[DEBUG] get_top10_cryptos using provider {API_PROVIDER}")
-    if API_PROVIDER == "coinmarketcap":
-        coins = get_top10_coinmarketcap()
-    elif API_PROVIDER == "coinpaprika":
-        coins = get_top10_coinpaprika()
-    elif API_PROVIDER == "cryptocompare":
-        coins = get_top10_cryptocompare()
-    elif API_PROVIDER == "bitget":
-        coins = get_top10_bitget()
-    elif API_PROVIDER == "coingecko":
-        coins = get_top10_coingecko()
-    else:
-        coins = []
+    print("[DEBUG] get_top10_cryptos using coingecko")
+    coins = get_top10_coingecko()
     print(f"[DEBUG] get_top10_cryptos fetched {len(coins)} coins")
     return coins
 
 
 def generate_top10_chart(coins):
     """Erstellt Candlestick-Charts für die Top-10-Coins."""
-    print(f"[DEBUG] generate_top10_chart using provider {API_PROVIDER}")
+    print("[DEBUG] generate_top10_chart using coingecko")
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
@@ -331,150 +178,23 @@ def generate_top10_chart(coins):
             symbol = coin.get("symbol")
             print(f"[DEBUG] Processing {symbol}")
             ohlc_data = []
-            if API_PROVIDER == "coingecko":
-                coin_id = coin.get("id")
-                try:
-                    print(f"[DEBUG] Requesting Coingecko OHLC for {coin_id}")
-                    r = requests.get(
-                        f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                        params={"vs_currency": "usd", "days": 1},
-                        timeout=10,
-                    )
-                    print(f"[DEBUG] Coingecko status {r.status_code}")
-                    r.raise_for_status()
-                    raw = r.json()
-                    print(f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}")
-                    for t, o, h, l, c in raw:
-                        ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
-                except Exception as e:
-                    print(f"[DEBUG] Coingecko OHLC error for {symbol}: {e}")
-                    ohlc_data = []
-            elif API_PROVIDER == "coinmarketcap":
-                headers = {}
-                if COINMARKETCAP_API_KEY:
-                    headers["X-CMC_PRO_API_KEY"] = COINMARKETCAP_API_KEY
-                try:
-                    print(f"[DEBUG] Requesting CoinMarketCap OHLC for {symbol}")
-                    r = requests.get(
-                        "https://pro-api.coinmarketcap.com/v2/cryptocurrency/ohlcv/historical",
-                        params={"symbol": symbol, "count": 24, "interval": "1h"},
-                        headers=headers,
-                        timeout=10,
-                    )
-                    print(f"[DEBUG] CoinMarketCap status {r.status_code} for {symbol}")
-                    r.raise_for_status()
-                    json_data = r.json().get("data", {})
-                    raw = []
-                    if isinstance(json_data, dict):
-                        symbol_data = json_data.get(symbol) or json_data
-                        raw = symbol_data.get("quotes", [])
-                    elif isinstance(json_data, list):
-                        for entry in json_data:
-                            if entry.get("symbol") == symbol:
-                                raw = entry.get("quotes", [])
-                                break
-                    print(f"[DEBUG] CoinMarketCap returned {len(raw)} entries for {symbol}")
-                    for item in raw:
-                        usd = item.get("quote", {}).get("USD", {})
-                        o = usd.get("open")
-                        h = usd.get("high")
-                        l = usd.get("low")
-                        c = usd.get("close")
-                        t = item.get("time_open")
-                        if None not in (t, o, h, l, c):
-                            dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
-                            ohlc_data.append([mdates.date2num(dt), o, h, l, c])
-                except Exception as e:
-                    print(f"[DEBUG] CoinMarketCap OHLC error for {symbol}: {e}")
-                    ohlc_data = []
-            elif API_PROVIDER == "coinpaprika":
-                coin_id = coin.get("id")
-                try:
-                    start = (
-                        datetime.datetime.utcnow() - datetime.timedelta(hours=24)
-                    ).replace(microsecond=0).isoformat()
-                    print(f"[DEBUG] Requesting CoinPaprika OHLC for {coin_id}")
-                    r = requests.get(
-                        f"https://api.coinpaprika.com/v1/tickers/{coin_id}/historical",
-                        params={"start": start, "interval": "1h", "limit": 24},
-                        timeout=10,
-                    )
-                    print(f"[DEBUG] CoinPaprika status {r.status_code} for {symbol}")
-                    r.raise_for_status()
-                    raw = r.json()
-                    print(f"[DEBUG] CoinPaprika returned {len(raw)} entries for {symbol}")
-                    for item in raw:
-                        o = item.get("open")
-                        h = item.get("high")
-                        l = item.get("low")
-                        c = item.get("close")
-                        t = item.get("timestamp")
-                        if None not in (t, o, h, l, c):
-                            dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
-                            ohlc_data.append([mdates.date2num(dt), o, h, l, c])
-                except Exception as e:
-                    print(f"[DEBUG] CoinPaprika OHLC error for {symbol}: {e}")
-                    ohlc_data = []
-            elif API_PROVIDER == "cryptocompare":
-                headers = {}
-                if CRYPTOCOMPARE_API_KEY:
-                    headers["Authorization"] = f"Apikey {CRYPTOCOMPARE_API_KEY}"
-                try:
-                    print(f"[DEBUG] Requesting CryptoCompare OHLC for {symbol}")
-                    r = requests.get(
-                        "https://min-api.cryptocompare.com/data/v2/histohour",
-                        params={"fsym": symbol, "tsym": "USD", "limit": 24},
-                        headers=headers,
-                        timeout=10,
-                    )
-                    print(f"[DEBUG] CryptoCompare status {r.status_code} for {symbol}")
-                    r.raise_for_status()
-                    raw = r.json().get("Data", {})
-                    if isinstance(raw, dict):
-                        raw = raw.get("Data", [])
-                    print(f"[DEBUG] CryptoCompare returned {len(raw)} entries for {symbol}")
-                    for item in raw or []:
-                        t = item.get("time")
-                        o = item.get("open")
-                        h = item.get("high")
-                        l = item.get("low")
-                        c = item.get("close")
-                        if None not in (t, o, h, l, c):
-                            ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
-                except Exception as e:
-                    print(f"[DEBUG] CryptoCompare OHLC error for {symbol}: {e}")
-                    ohlc_data = []
-            elif API_PROVIDER == "bitget":
-                try:
-                    bitget_symbol = (
-                        symbol if symbol.endswith("_SPBL") else f"{symbol}_SPBL"
-                    )
-                    print(
-                        f"[DEBUG] Requesting Bitget OHLC for {bitget_symbol} (original {symbol})"
-                    )
-                    r = requests.get(
-                        BITGET_CANDLES_URL,
-                        params={
-                            "symbol": bitget_symbol,
-                            "granularity": 3600,
-                            "limit": 24,
-                        },
-                        timeout=10,
-                    )
-                    print(f"[DEBUG] Bitget status {r.status_code} for {bitget_symbol}")
-                    r.raise_for_status()
-                    raw = r.json().get("data", [])
-                    print(
-                        f"[DEBUG] Bitget returned {len(raw)} entries for {bitget_symbol}"
-                    )
-                    # Bitget liefert die aktuellste Kerze zuerst
-                    for item in reversed(raw):
-                        t = int(item[0]) / 1000
-                        o, h, l, c = map(float, item[1:5])
-                        ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
-                except Exception as e:
-                    print(f"[DEBUG] Bitget OHLC error for {symbol}: {e}")
-                    ohlc_data = []
+            coin_id = coin.get("id")
+            try:
+                print(f"[DEBUG] Requesting Coingecko OHLC for {coin_id}")
+                r = requests.get(
+                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                    params={"vs_currency": "usd", "days": 7},
+                    timeout=10,
+                )
+                print(f"[DEBUG] Coingecko status {r.status_code}")
+                r.raise_for_status()
+                raw = r.json()
+                print(f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}")
+                for t, o, h, l, c in raw:
+                    ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
+            except Exception as e:
+                print(f"[DEBUG] Coingecko OHLC error for {symbol}: {e}")
+                ohlc_data = []
 
             if ohlc_data:
                 print(f"[DEBUG] Plotting {symbol} with {len(ohlc_data)} entries")
@@ -485,7 +205,7 @@ def generate_top10_chart(coins):
                     colordown="red",
                     width=0.6 / 24,
                 )
-                ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
                 ax.set_xticks([])
                 ax.set_yticks([])
             else:

@@ -18,15 +18,8 @@ pip install requests telebot schedule matplotlib mplfinance
 
 ## Konfiguration
 
-1. Kopiere die Datei `config.json` und trage deinen Bot-Token ein. Optional kannst du
-   API-Schlüssel für verschiedene Datenquellen hinzufügen:
-   - `coingecko_api_key`
-   - `coinmarketcap_api_key`
-   - `coinpaprika_api_key`
-   - `cryptocompare_api_key`
-   Mit `api_provider` legst du fest, welche Quelle der `/top10`-Befehl nutzt
-   (`coingecko`, `coinmarketcap`, `coinpaprika`, `cryptocompare`, `bitget`). Wenn du keinen
-   Provider nutzen möchtest, lass das Feld leer oder wähle eine ungültige Option.
+1. Kopiere die Datei `config.json` und trage deinen Bot-Token ein. Der `/top10`-Befehl nutzt
+   Daten von Coingecko.
 2. Starte den Bot anschließend mit:
 
 ```bash
