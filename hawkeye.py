@@ -162,11 +162,43 @@ def get_top10_coingecko():
         return []
 
 
+def get_top10_binance():
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/ticker/24hr", timeout=10
+        )
+        r.raise_for_status()
+        tickers = r.json()
+        top10 = sorted(
+            tickers, key=lambda x: float(x.get("quoteVolume", 0)), reverse=True
+        )[:10]
+        coins = []
+        for t in top10:
+            coins.append(
+                {
+                    "name": t["symbol"],
+                    "symbol": t["symbol"],
+                    "current_price": float(t["lastPrice"]),
+                    "price_change_percentage_24h": float(
+                        t["priceChangePercent"]
+                    ),
+                }
+            )
+        print(f"[DEBUG] get_top10_binance returned {len(coins)} coins")
+        return coins
+    except Exception as e:
+        print(f"[DEBUG] get_top10_binance error: {e}")
+        return []
+
+
 def get_top10_cryptos():
-    print("[DEBUG] get_top10_cryptos using coingecko")
     coins = get_top10_coingecko()
-    print(f"[DEBUG] get_top10_cryptos fetched {len(coins)} coins")
-    return coins
+    if coins:
+        print(f"[DEBUG] get_top10_cryptos fetched {len(coins)} coins from coingecko")
+        return coins, "coingecko"
+    print("[DEBUG] get_top10_cryptos: falling back to binance")
+    coins = get_top10_binance()
+    return coins, "binance"
 
 
 def generate_top10_chart(coins):
@@ -257,6 +289,42 @@ def generate_top10_chart(coins):
     except Exception:
         return None
 
+
+def generate_binance_candlestick(symbol):
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": symbol, "interval": "1h", "limit": 24},
+            timeout=10,
+        )
+        r.raise_for_status()
+        raw = r.json()
+        ohlc = [
+            [
+                mdates.date2num(datetime.utcfromtimestamp(item[0] / 1000)),
+                float(item[1]),
+                float(item[2]),
+                float(item[3]),
+                float(item[4]),
+            ]
+            for item in raw
+        ]
+        fig, ax = plt.subplots()
+        candlestick_ohlc(
+            ax, ohlc, colorup="green", colordown="red", width=0.6 / 24
+        )
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(symbol)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[DEBUG] generate_binance_candlestick error for {symbol}: {e}")
+        return None
 
 # === FUNKTIONEN: Checks ===
 def check_price():
@@ -427,7 +495,7 @@ def show_current_prices(message):
 
 @bot.message_handler(commands=["top10"])
 def show_top10(message):
-    coins = get_top10_cryptos()
+    coins, source = get_top10_cryptos()
     if not coins:
         print("[DEBUG] show_top10: get_top10_cryptos returned no data")
         bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
@@ -447,13 +515,20 @@ def show_top10(message):
         lines.append(
             f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price_str} USD ({change_str})"
         )
-    chart = generate_top10_chart(coins)
     text = "\n".join(lines)
-    if chart:
-        bot.send_photo(message.chat.id, chart, caption=text)
+    if source == "coingecko":
+        chart = generate_top10_chart(coins)
+        if chart:
+            bot.send_photo(message.chat.id, chart, caption=text)
+        else:
+            print("[DEBUG] show_top10: generate_top10_chart returned no chart")
+            bot.reply_to(message, text)
     else:
-        print("[DEBUG] show_top10: generate_top10_chart returned no chart")
         bot.reply_to(message, text)
+        for sym in [c.get("symbol") for c in coins[:3]]:
+            chart = generate_binance_candlestick(sym)
+            if chart:
+                bot.send_photo(message.chat.id, chart)
 
 
 @bot.message_handler(commands=["menu", "help"])
