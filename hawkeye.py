@@ -640,8 +640,14 @@ def show_top10(message):
         change = coin.get("price_change_percentage_24h")
         if change is None:
             change = coin.get("price_change_percentage_24h_in_currency")
+
+        price_str = f"{price:.2f}" if isinstance(price, (int, float)) else "N/A"
+        change_str = (
+            f"{change:+.2f}%" if isinstance(change, (int, float)) else "N/A"
+        )
+
         lines.append(
-            f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price} USD ({change:+.2f}%)"
+            f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price_str} USD ({change_str})"
         )
     chart = generate_top10_chart(coins)
     text = "\n".join(lines)
