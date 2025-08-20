@@ -272,6 +272,23 @@ def set_interval_command(message):
     bot.reply_to(message, f"⏱ Prüfintervall auf {new_interval} Minuten gesetzt.")
 
 
+@bot.message_handler(commands=["now"])
+def show_current_prices(message):
+    cfg = get_user(message.chat.id)
+    symbols = cfg.get("symbols", {})
+    if not symbols:
+        bot.reply_to(message, "⚠ Keine Symbole konfiguriert.")
+        return
+    lines = ["📈 Aktuelle Preise:"]
+    for sym in symbols:
+        price = get_price(sym)
+        if price is None:
+            lines.append(f"{sym}: Preis nicht verfügbar")
+        else:
+            lines.append(f"{sym}: {price}")
+    bot.reply_to(message, "\n".join(lines))
+
+
 @bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
     cfg = get_user(message.chat.id)

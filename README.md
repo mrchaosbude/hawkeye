@@ -36,6 +36,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/start` – Benachrichtigungen aktivieren
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
 - `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
+- `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
 
 ## Hinweise
 
