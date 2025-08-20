@@ -217,6 +217,7 @@ def get_top10_coinpaprika():
             quote = coin.get("quotes", {}).get("USD", {})
             coins.append(
                 {
+                    "id": coin.get("id"),
                     "name": coin.get("name"),
                     "symbol": coin.get("symbol"),
                     "current_price": quote.get("price"),
@@ -315,6 +316,54 @@ def generate_top10_chart(coins):
                         if None not in (t, o, h, l, c):
                             dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
                             ohlc_data.append([mdates.date2num(dt), o, h, l, c])
+                except Exception:
+                    ohlc_data = []
+            elif API_PROVIDER == "coinpaprika":
+                coin_id = coin.get("id")
+                try:
+                    start = (
+                        datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+                    ).replace(microsecond=0).isoformat()
+                    r = requests.get(
+                        f"https://api.coinpaprika.com/v1/tickers/{coin_id}/historical",
+                        params={"start": start, "interval": "1h", "limit": 24},
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    raw = r.json()
+                    for item in raw:
+                        o = item.get("open")
+                        h = item.get("high")
+                        l = item.get("low")
+                        c = item.get("close")
+                        t = item.get("timestamp")
+                        if None not in (t, o, h, l, c):
+                            dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
+                            ohlc_data.append([mdates.date2num(dt), o, h, l, c])
+                except Exception:
+                    ohlc_data = []
+            elif API_PROVIDER == "cryptocompare":
+                symbol = coin.get("symbol")
+                headers = {}
+                if CRYPTOCOMPARE_API_KEY:
+                    headers["Authorization"] = f"Apikey {CRYPTOCOMPARE_API_KEY}"
+                try:
+                    r = requests.get(
+                        "https://min-api.cryptocompare.com/data/v2/histohour",
+                        params={"fsym": symbol, "tsym": "USD", "limit": 24},
+                        headers=headers,
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    raw = r.json().get("Data", {}).get("Data", [])
+                    for item in raw:
+                        t = item.get("time")
+                        o = item.get("open")
+                        h = item.get("high")
+                        l = item.get("low")
+                        c = item.get("close")
+                        if None not in (t, o, h, l, c):
+                            ohlc_data.append([mdates.epoch2num(t), o, h, l, c])
                 except Exception:
                     ohlc_data = []
 
