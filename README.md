@@ -25,7 +25,7 @@ pip install requests telebot schedule matplotlib mplfinance
    - `coinpaprika_api_key`
    - `cryptocompare_api_key`
    Mit `api_provider` legst du fest, welche Quelle der `/top10`-Befehl nutzt
-   (`coingecko`, `coinmarketcap`, `coinpaprika`, `cryptocompare`). Wenn du keinen
+   (`coingecko`, `coinmarketcap`, `coinpaprika`, `cryptocompare`, `bitget`). Wenn du keinen
    Provider nutzen möchtest, lass das Feld leer oder wähle eine ungültige Option.
 2. Starte den Bot anschließend mit:
 
