@@ -9,6 +9,8 @@ import subprocess
 import sys
 import io
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+from mplfinance.original_flavor import candlestick_ohlc
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -133,7 +135,6 @@ def get_top10_cryptos():
                 "per_page": 10,
                 "page": 1,
                 "price_change_percentage": "24h",
-                "sparkline": "true",
             },
             timeout=10,
         )
@@ -144,18 +145,41 @@ def get_top10_cryptos():
 
 
 def generate_top10_chart(coins):
+    """Erstellt Candlestick-Charts für die Top-10-Coins."""
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
         for ax, coin in zip(axes, coins):
-            prices = coin.get("sparkline_in_7d", {}).get("price", [])[-24:]
-            if prices:
-                ax.plot(prices, color="blue")
+            coin_id = coin.get("id")
+            ohlc_data = []
+            try:
+                r = requests.get(
+                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                    params={"vs_currency": "usd", "days": 1},
+                    timeout=10,
+                )
+                r.raise_for_status()
+                raw = r.json()
+                for t, o, h, l, c in raw:
+                    ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
+            except Exception:
+                ohlc_data = []
+
+            if ohlc_data:
+                candlestick_ohlc(
+                    ax,
+                    ohlc_data,
+                    colorup="green",
+                    colordown="red",
+                    width=0.6 / 24,
+                )
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+                ax.set_xticks([])
+                ax.set_yticks([])
             else:
                 ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
             ax.set_title(coin.get("symbol", "").upper())
-            ax.set_xticks([])
-            ax.set_yticks([])
+
         for ax in axes[len(coins):]:
             ax.axis("off")
         fig.tight_layout()
