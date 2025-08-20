@@ -99,8 +99,11 @@ def get_price(sym):
     try:
         r = requests.get(BINANCE_PRICE_URL, params={"symbol": sym})
         r.raise_for_status()
-        return float(r.json()["markPrice"])
-    except Exception:
+        price = float(r.json()["markPrice"])
+        print(f"[DEBUG] get_price {sym} -> {price}")
+        return price
+    except Exception as e:
+        print(f"[DEBUG] get_price error for {sym}: {e}")
         return None
 
 
@@ -174,8 +177,10 @@ def get_top10_coingecko():
                 pct = coin.get("price_change_percentage_24h_in_currency")
                 if pct is not None:
                     coin["price_change_percentage_24h"] = pct
+        print(f"[DEBUG] get_top10_coingecko returned {len(data)} coins")
         return data
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] get_top10_coingecko error: {e}")
         return []
 
 
@@ -203,8 +208,10 @@ def get_top10_coinmarketcap():
                     "price_change_percentage_24h": quote.get("percent_change_24h"),
                 }
             )
+        print(f"[DEBUG] get_top10_coinmarketcap returned {len(coins)} coins")
         return coins
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] get_top10_coinmarketcap error: {e}")
         return []
 
 
@@ -226,8 +233,10 @@ def get_top10_coinpaprika():
                     "price_change_percentage_24h": quote.get("percent_change_24h"),
                 }
             )
+        print(f"[DEBUG] get_top10_coinpaprika returned {len(coins)} coins")
         return coins
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] get_top10_coinpaprika error: {e}")
         return []
 
 
@@ -256,8 +265,10 @@ def get_top10_cryptocompare():
                     "price_change_percentage_24h": raw.get("CHANGEPCT24HOUR"),
                 }
             )
+        print(f"[DEBUG] get_top10_cryptocompare returned {len(coins)} coins")
         return coins
-    except Exception:
+    except Exception as e:
+        print(f"[DEBUG] get_top10_cryptocompare error: {e}")
         return []
 
 
@@ -284,23 +295,30 @@ def get_top10_bitget():
                 }
             )
         coins.sort(key=lambda c: c.get("vol", 0), reverse=True)
-        return coins[:10]
-    except Exception:
+        top10 = coins[:10]
+        print(f"[DEBUG] get_top10_bitget returned {len(top10)} coins")
+        return top10
+    except Exception as e:
+        print(f"[DEBUG] get_top10_bitget error: {e}")
         return []
 
 
 def get_top10_cryptos():
+    print(f"[DEBUG] get_top10_cryptos using provider {API_PROVIDER}")
     if API_PROVIDER == "coinmarketcap":
-        return get_top10_coinmarketcap()
-    if API_PROVIDER == "coinpaprika":
-        return get_top10_coinpaprika()
-    if API_PROVIDER == "cryptocompare":
-        return get_top10_cryptocompare()
-    if API_PROVIDER == "bitget":
-        return get_top10_bitget()
-    if API_PROVIDER == "coingecko":
-        return get_top10_coingecko()
-    return []
+        coins = get_top10_coinmarketcap()
+    elif API_PROVIDER == "coinpaprika":
+        coins = get_top10_coinpaprika()
+    elif API_PROVIDER == "cryptocompare":
+        coins = get_top10_cryptocompare()
+    elif API_PROVIDER == "bitget":
+        coins = get_top10_bitget()
+    elif API_PROVIDER == "coingecko":
+        coins = get_top10_coingecko()
+    else:
+        coins = []
+    print(f"[DEBUG] get_top10_cryptos fetched {len(coins)} coins")
+    return coins
 
 
 def generate_top10_chart(coins):
@@ -632,6 +650,7 @@ def show_current_prices(message):
 def show_top10(message):
     coins = get_top10_cryptos()
     if not coins:
+        print("[DEBUG] show_top10: get_top10_cryptos returned no data")
         bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
         return
     lines = ["🏆 Top 10 Kryptowährungen:"]
