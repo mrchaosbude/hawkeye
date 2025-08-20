@@ -179,22 +179,54 @@ def generate_top10_chart(coins):
             print(f"[DEBUG] Processing {symbol}")
             ohlc_data = []
             coin_id = coin.get("id")
-            try:
-                print(f"[DEBUG] Requesting Coingecko OHLC for {coin_id}")
-                r = requests.get(
-                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                    params={"vs_currency": "usd", "days": 7},
-                    timeout=10,
-                )
-                print(f"[DEBUG] Coingecko status {r.status_code}")
-                r.raise_for_status()
-                raw = r.json()
-                print(f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}")
-                for t, o, h, l, c in raw:
-                    ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
-            except Exception as e:
-                print(f"[DEBUG] Coingecko OHLC error for {symbol}: {e}")
-                ohlc_data = []
+            backoff = 1
+            max_attempts = 5
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    print(
+                        f"[DEBUG] Requesting Coingecko OHLC for {coin_id} (attempt {attempt})"
+                    )
+                    r = requests.get(
+                        f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                        params={"vs_currency": "usd", "days": 7},
+                        timeout=10,
+                    )
+                    print(f"[DEBUG] Coingecko status {r.status_code}")
+                    if r.status_code == 429:
+                        wait = 60
+                        print(
+                            f"[DEBUG] 429 for {symbol}, sleeping {wait}s before retry"
+                        )
+                        time.sleep(wait)
+                        backoff *= 2
+                        continue
+                    r.raise_for_status()
+                    raw = r.json()
+                    print(
+                        f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}"
+                    )
+                    for t, o, h, l, c in raw:
+                        ohlc_data.append(
+                            [mdates.epoch2num(t / 1000), o, h, l, c]
+                        )
+                    time.sleep(1)
+                    break
+                except Exception as e:
+                    print(
+                        f"[DEBUG] Coingecko OHLC error for {symbol}: {e} (attempt {attempt})"
+                    )
+                    if attempt == max_attempts:
+                        ohlc_data = []
+                        print(
+                            f"[DEBUG] Failed to fetch OHLC for {symbol} after {max_attempts} attempts"
+                        )
+                    else:
+                        wait = backoff
+                        print(
+                            f"[DEBUG] Retrying {symbol} in {wait}s"
+                        )
+                        time.sleep(wait)
+                        backoff *= 2
 
             if ohlc_data:
                 print(f"[DEBUG] Plotting {symbol} with {len(ohlc_data)} entries")
