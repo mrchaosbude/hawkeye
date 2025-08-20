@@ -133,7 +133,7 @@ def get_top10_cryptos():
                 "per_page": 10,
                 "page": 1,
                 "price_change_percentage": "24h",
-                "sparkline": True,
+                "sparkline": "true",
             },
             timeout=10,
         )
