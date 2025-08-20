@@ -11,6 +11,7 @@ import io
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
+import datetime
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -270,27 +271,52 @@ def get_top10_cryptos():
 
 
 def generate_top10_chart(coins):
-    """Erstellt Candlestick-Charts für die Top-10-Coins (nur CoinGecko)."""
-    if API_PROVIDER != "coingecko":
-        return None
+    """Erstellt Candlestick-Charts für die Top-10-Coins."""
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
         for ax, coin in zip(axes, coins):
-            coin_id = coin.get("id")
             ohlc_data = []
-            try:
-                r = requests.get(
-                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                    params={"vs_currency": "usd", "days": 1},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                raw = r.json()
-                for t, o, h, l, c in raw:
-                    ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
-            except Exception:
-                ohlc_data = []
+            if API_PROVIDER == "coingecko":
+                coin_id = coin.get("id")
+                try:
+                    r = requests.get(
+                        f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                        params={"vs_currency": "usd", "days": 1},
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    raw = r.json()
+                    for t, o, h, l, c in raw:
+                        ohlc_data.append([mdates.epoch2num(t / 1000), o, h, l, c])
+                except Exception:
+                    ohlc_data = []
+            elif API_PROVIDER == "coinmarketcap":
+                symbol = coin.get("symbol")
+                headers = {}
+                if COINMARKETCAP_API_KEY:
+                    headers["X-CMC_PRO_API_KEY"] = COINMARKETCAP_API_KEY
+                try:
+                    r = requests.get(
+                        "https://pro-api.coinmarketcap.com/v2/cryptocurrency/ohlcv/historical",
+                        params={"symbol": symbol, "count": 24, "interval": "1h"},
+                        headers=headers,
+                        timeout=10,
+                    )
+                    r.raise_for_status()
+                    raw = r.json().get("data", {}).get("quotes", [])
+                    for item in raw:
+                        usd = item.get("quote", {}).get("USD", {})
+                        o = usd.get("open")
+                        h = usd.get("high")
+                        l = usd.get("low")
+                        c = usd.get("close")
+                        t = item.get("time_open")
+                        if None not in (t, o, h, l, c):
+                            dt = datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
+                            ohlc_data.append([mdates.date2num(dt), o, h, l, c])
+                except Exception:
+                    ohlc_data = []
 
             if ohlc_data:
                 candlestick_ohlc(
