@@ -16,11 +16,23 @@ from mplfinance.original_flavor import candlestick_ohlc
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
+COINMARKETCAP_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
+COINPAPRIKA_URL = "https://api.coinpaprika.com/v1/tickers"
+CRYPTOCOMPARE_URL = "https://min-api.cryptocompare.com/data/top/mktcapfull"
 
 
 def load_config():
     if not os.path.exists(CONFIG_FILE):
-        return {"telegram_token": "", "users": {}, "check_interval": 5, "coingecko_api_key": ""}
+        return {
+            "telegram_token": "",
+            "users": {},
+            "check_interval": 5,
+            "coingecko_api_key": "",
+            "coinmarketcap_api_key": "",
+            "coinpaprika_api_key": "",
+            "cryptocompare_api_key": "",
+            "api_provider": "coingecko",
+        }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -33,6 +45,10 @@ def save_config():
                 "users": users,
                 "check_interval": check_interval,
                 "coingecko_api_key": COINGECKO_API_KEY,
+                "coinmarketcap_api_key": COINMARKETCAP_API_KEY,
+                "coinpaprika_api_key": COINPAPRIKA_API_KEY,
+                "cryptocompare_api_key": CRYPTOCOMPARE_API_KEY,
+                "api_provider": API_PROVIDER,
             },
             f,
             indent=2,
@@ -44,6 +60,10 @@ TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
 COINGECKO_API_KEY = config.get("coingecko_api_key", "")
+COINMARKETCAP_API_KEY = config.get("coinmarketcap_api_key", "")
+COINPAPRIKA_API_KEY = config.get("coinpaprika_api_key", "")
+CRYPTOCOMPARE_API_KEY = config.get("cryptocompare_api_key", "")
+API_PROVIDER = config.get("api_provider", "coingecko")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -127,7 +147,7 @@ def generate_buy_sell_chart(sym):
         return None
 
 
-def get_top10_cryptos():
+def get_top10_coingecko():
     headers = {}
     if COINGECKO_API_KEY:
         headers["x-cg-demo-api-key"] = COINGECKO_API_KEY
@@ -156,8 +176,103 @@ def get_top10_cryptos():
         return []
 
 
+def get_top10_coinmarketcap():
+    headers = {}
+    if COINMARKETCAP_API_KEY:
+        headers["X-CMC_PRO_API_KEY"] = COINMARKETCAP_API_KEY
+    try:
+        r = requests.get(
+            COINMARKETCAP_URL,
+            params={"start": 1, "limit": 10, "convert": "USD"},
+            headers=headers,
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json().get("data", [])
+        coins = []
+        for coin in data:
+            quote = coin.get("quote", {}).get("USD", {})
+            coins.append(
+                {
+                    "name": coin.get("name"),
+                    "symbol": coin.get("symbol"),
+                    "current_price": quote.get("price"),
+                    "price_change_percentage_24h": quote.get("percent_change_24h"),
+                }
+            )
+        return coins
+    except Exception:
+        return []
+
+
+def get_top10_coinpaprika():
+    try:
+        r = requests.get(COINPAPRIKA_URL, params={"quotes": "USD"}, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        top = [c for c in data if c.get("rank", 0) and c["rank"] <= 10]
+        coins = []
+        for coin in top:
+            quote = coin.get("quotes", {}).get("USD", {})
+            coins.append(
+                {
+                    "name": coin.get("name"),
+                    "symbol": coin.get("symbol"),
+                    "current_price": quote.get("price"),
+                    "price_change_percentage_24h": quote.get("percent_change_24h"),
+                }
+            )
+        return coins
+    except Exception:
+        return []
+
+
+def get_top10_cryptocompare():
+    headers = {}
+    if CRYPTOCOMPARE_API_KEY:
+        headers["Authorization"] = f"Apikey {CRYPTOCOMPARE_API_KEY}"
+    try:
+        r = requests.get(
+            CRYPTOCOMPARE_URL,
+            params={"limit": 10, "tsym": "USD"},
+            headers=headers,
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json().get("Data", [])
+        coins = []
+        for item in data:
+            info = item.get("CoinInfo", {})
+            raw = item.get("RAW", {}).get("USD", {})
+            coins.append(
+                {
+                    "name": info.get("FullName"),
+                    "symbol": info.get("Name"),
+                    "current_price": raw.get("PRICE"),
+                    "price_change_percentage_24h": raw.get("CHANGEPCT24HOUR"),
+                }
+            )
+        return coins
+    except Exception:
+        return []
+
+
+def get_top10_cryptos():
+    if API_PROVIDER == "coinmarketcap":
+        return get_top10_coinmarketcap()
+    if API_PROVIDER == "coinpaprika":
+        return get_top10_coinpaprika()
+    if API_PROVIDER == "cryptocompare":
+        return get_top10_cryptocompare()
+    if API_PROVIDER == "coingecko":
+        return get_top10_coingecko()
+    return []
+
+
 def generate_top10_chart(coins):
-    """Erstellt Candlestick-Charts für die Top-10-Coins."""
+    """Erstellt Candlestick-Charts für die Top-10-Coins (nur CoinGecko)."""
+    if API_PROVIDER != "coingecko":
+        return None
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
