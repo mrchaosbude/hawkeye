@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
+COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 
 
 def load_config():
@@ -113,6 +114,51 @@ def generate_buy_sell_chart(sym):
         ax.legend()
         fig.tight_layout()
 
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception:
+        return None
+
+
+def get_top10_cryptos():
+    try:
+        r = requests.get(
+            COINGECKO_MARKETS_URL,
+            params={
+                "vs_currency": "usd",
+                "order": "market_cap_desc",
+                "per_page": 10,
+                "page": 1,
+                "price_change_percentage": "24h",
+                "sparkline": True,
+            },
+            timeout=10,
+        )
+        r.raise_for_status()
+        return r.json()
+    except Exception:
+        return []
+
+
+def generate_top10_chart(coins):
+    try:
+        fig, axes = plt.subplots(5, 2, figsize=(10, 12))
+        axes = axes.flatten()
+        for ax, coin in zip(axes, coins):
+            prices = coin.get("sparkline_in_7d", {}).get("price", [])[-24:]
+            if prices:
+                ax.plot(prices, color="blue")
+            else:
+                ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
+            ax.set_title(coin.get("symbol", "").upper())
+            ax.set_xticks([])
+            ax.set_yticks([])
+        for ax in axes[len(coins):]:
+            ax.axis("off")
+        fig.tight_layout()
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
@@ -287,6 +333,27 @@ def show_current_prices(message):
         else:
             lines.append(f"{sym}: {price}")
     bot.reply_to(message, "\n".join(lines))
+
+
+@bot.message_handler(commands=["top10"])
+def show_top10(message):
+    coins = get_top10_cryptos()
+    if not coins:
+        bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
+        return
+    lines = ["🏆 Top 10 Kryptowährungen:"]
+    for i, coin in enumerate(coins, start=1):
+        price = coin.get("current_price")
+        change = coin.get("price_change_percentage_24h")
+        lines.append(
+            f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price} USD ({change:+.2f}%)"
+        )
+    chart = generate_top10_chart(coins)
+    text = "\n".join(lines)
+    if chart:
+        bot.send_photo(message.chat.id, chart, caption=text)
+    else:
+        bot.reply_to(message, text)
 
 
 @bot.message_handler(commands=["menu", "help"])

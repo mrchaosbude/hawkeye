@@ -37,6 +37,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
 - `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
 - `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
+- `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Tageschart
 
 ## Hinweise
 
