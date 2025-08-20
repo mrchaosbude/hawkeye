@@ -6,14 +6,14 @@ Hawkeye ist ein einfacher Telegram-Bot, der Kryptowährungspreise überwacht und
 
 - Python 3.9 oder neuer
 - Ein Telegram-Bot-Token
-- Abhängigkeiten: `requests`, `telebot`, `schedule`, `matplotlib`
+- Abhängigkeiten: `requests`, `telebot`, `schedule`, `matplotlib`, `mplfinance`
 
 Installiere die Abhängigkeiten am besten in einem virtuellen Umfeld:
 
 ```bash
 python -m venv venv
 source venv/bin/activate
-pip install requests telebot schedule matplotlib
+pip install requests telebot schedule matplotlib mplfinance
 ```
 
 ## Konfiguration
@@ -37,7 +37,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
 - `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
 - `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
-- `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Tageschart
+- `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
 
 ## Hinweise
 
