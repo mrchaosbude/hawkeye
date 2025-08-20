@@ -446,16 +446,27 @@ def generate_top10_chart(coins):
                     ohlc_data = []
             elif API_PROVIDER == "bitget":
                 try:
-                    print(f"[DEBUG] Requesting Bitget OHLC for {symbol}")
+                    bitget_symbol = (
+                        symbol if symbol.endswith("_SPBL") else f"{symbol}_SPBL"
+                    )
+                    print(
+                        f"[DEBUG] Requesting Bitget OHLC for {bitget_symbol} (original {symbol})"
+                    )
                     r = requests.get(
                         BITGET_CANDLES_URL,
-                        params={"symbol": symbol, "granularity": 3600, "limit": 24},
+                        params={
+                            "symbol": bitget_symbol,
+                            "granularity": 3600,
+                            "limit": 24,
+                        },
                         timeout=10,
                     )
-                    print(f"[DEBUG] Bitget status {r.status_code} for {symbol}")
+                    print(f"[DEBUG] Bitget status {r.status_code} for {bitget_symbol}")
                     r.raise_for_status()
                     raw = r.json().get("data", [])
-                    print(f"[DEBUG] Bitget returned {len(raw)} entries for {symbol}")
+                    print(
+                        f"[DEBUG] Bitget returned {len(raw)} entries for {bitget_symbol}"
+                    )
                     # Bitget liefert die aktuellste Kerze zuerst
                     for item in reversed(raw):
                         t = int(item[0]) / 1000
