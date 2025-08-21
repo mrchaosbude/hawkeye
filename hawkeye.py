@@ -126,6 +126,7 @@ def get_user(chat_id):
             "notifications": True,
             "language": "de",
             "role": "user",
+            "max_symbols": 5,
         }
         save_config()
     # Sicherstellen, dass ältere Konfigurationen migriert werden
@@ -143,6 +144,7 @@ def get_user(chat_id):
         sym_cfg.setdefault("trailing_percent", None)
     users[cid].setdefault("language", "de")
     users[cid].setdefault("role", "user")
+    users[cid].setdefault("max_symbols", 5)
     return users[cid]
 
 
@@ -807,13 +809,25 @@ def set_config(message):
     except ValueError:
         bot.reply_to(message, translate(message.chat.id, "set_number_error"))
         return
-    entry = cfg.setdefault("symbols", {}).setdefault(new_symbol.upper(), {})
+    symbols = cfg.setdefault("symbols", {})
+    symbol_upper = new_symbol.upper()
+    if symbol_upper not in symbols and len(symbols) >= cfg.get("max_symbols", 5):
+        bot.reply_to(
+            message,
+            translate(
+                message.chat.id,
+                "max_symbols_reached",
+                max_symbols=cfg.get("max_symbols", 5),
+            ),
+        )
+        return
+    entry = symbols.setdefault(symbol_upper, {})
     entry["stop_loss"] = stop_loss
     entry["take_profit"] = take_profit
     save_config()
     bot.reply_to(
         message,
-        translate(message.chat.id, "config_updated", symbol=new_symbol.upper()),
+        translate(message.chat.id, "config_updated", symbol=symbol_upper),
     )
 
 
@@ -831,13 +845,25 @@ def set_percent_command(message):
     except ValueError:
         bot.reply_to(message, translate(message.chat.id, "percent_nan"))
         return
-    price = get_price(symbol.upper())
-    if price is None:
+    symbol_upper = symbol.upper()
+    symbols = cfg.setdefault("symbols", {})
+    if symbol_upper not in symbols and len(symbols) >= cfg.get("max_symbols", 5):
         bot.reply_to(
-            message, translate(message.chat.id, "price_fetch_error", symbol=symbol.upper())
+            message,
+            translate(
+                message.chat.id,
+                "max_symbols_reached",
+                max_symbols=cfg.get("max_symbols", 5),
+            ),
         )
         return
-    entry = cfg.setdefault("symbols", {}).setdefault(symbol.upper(), {})
+    price = get_price(symbol_upper)
+    if price is None:
+        bot.reply_to(
+            message, translate(message.chat.id, "price_fetch_error", symbol=symbol_upper)
+        )
+        return
+    entry = symbols.setdefault(symbol_upper, {})
     entry["percent"] = percent
     entry["base_price"] = price
     save_config()
@@ -846,7 +872,7 @@ def set_percent_command(message):
         translate(
             message.chat.id,
             "percent_set",
-            symbol=symbol.upper(),
+            symbol=symbol_upper,
             percent=percent,
             price=price,
         ),
@@ -862,7 +888,22 @@ def set_trailing_command(message):
         bot.reply_to(message, translate(message.chat.id, "usage_trail"))
         return
     symbol = parts[0].upper()
-    entry = cfg.setdefault("symbols", {}).setdefault(symbol, {})
+    symbols = cfg.setdefault("symbols", {})
+    if (
+        len(parts) > 1
+        and symbol not in symbols
+        and len(symbols) >= cfg.get("max_symbols", 5)
+    ):
+        bot.reply_to(
+            message,
+            translate(
+                message.chat.id,
+                "max_symbols_reached",
+                max_symbols=cfg.get("max_symbols", 5),
+            ),
+        )
+        return
+    entry = symbols.setdefault(symbol, {})
     if len(parts) == 1:
         entry.pop("trailing_percent", None)
         save_config()

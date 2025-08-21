@@ -15,6 +15,7 @@
   "usage_remove": "⚠ Nutzung: /remove SYMBOL",
   "symbol_removed": "✅ {symbol} entfernt.",
   "symbol_not_found": "⚠ {symbol} nicht gefunden.",
+  "max_symbols_reached": "⚠ Maximale Anzahl von Symbolen erreicht ({max_symbols}). Entferne zuerst ein anderes Symbol.",
   "usage_interval": "⚠ Nutzung: /interval MINUTEN",
   "interval_positive": "⚠ Intervall muss eine positive Ganzzahl sein.",
   "interval_set": "⏱ Prüfintervall auf {minutes} Minuten gesetzt.",
