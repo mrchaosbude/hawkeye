@@ -1012,6 +1012,8 @@ def show_top10(message):
             f"{i}. {coin.get('name')} ({symbol}): {price_str} USD ({change_str})"
         )
         chart = generate_cached_candle_chart(symbol)
+        if not chart:
+            chart = generate_binance_candlestick(symbol)
         if chart:
             bot.send_photo(message.chat.id, chart, caption=caption)
         else:
