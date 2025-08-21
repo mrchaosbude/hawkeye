@@ -15,6 +15,8 @@ import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
 from datetime import datetime
 import logging
+import pandas as pd
+from trading_strategy import generate_signals
 
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -460,6 +462,36 @@ def generate_binance_candlestick(symbol):
         logger.error(
             "generate_binance_candlestick error for %s: %s", symbol, e
         )
+        return None
+
+
+def get_daily_ohlcv(sym, limit=400):
+    try:
+        r = requests.get(
+            "https://api.binance.com/api/v3/klines",
+            params={"symbol": sym, "interval": "1d", "limit": limit},
+            timeout=10,
+        )
+        r.raise_for_status()
+        raw = r.json()
+        rows = [
+            {
+                "Date": datetime.utcfromtimestamp(item[0] / 1000),
+                "Open": float(item[1]),
+                "High": float(item[2]),
+                "Low": float(item[3]),
+                "Close": float(item[4]),
+                "Volume": float(item[5]),
+            }
+            for item in raw
+        ]
+        df = pd.DataFrame(rows).set_index("Date")
+        return df
+    except requests.Timeout:
+        logger.error("get_daily_ohlcv timeout for %s", sym)
+        return None
+    except (requests.RequestException, ValueError) as e:
+        logger.error("get_daily_ohlcv error for %s: %s", sym, e)
         return None
 
 
@@ -1002,6 +1034,38 @@ def show_history(message):
         bot.reply_to(
             message, translate(message.chat.id, "history_error", symbol=symbol)
         )
+
+
+@bot.message_handler(commands=["signal"])
+def signal_command(message):
+    parts = message.text.split()[1:]
+    if len(parts) not in (1, 2):
+        bot.reply_to(message, translate(message.chat.id, "usage_signal"))
+        return
+    symbol = parts[0].upper()
+    benchmark = parts[1].upper() if len(parts) == 2 else "BTCUSDT"
+    asset = get_daily_ohlcv(symbol)
+    bench = get_daily_ohlcv(benchmark)
+    if asset is None or bench is None:
+        bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
+        return
+    try:
+        sigs = generate_signals(asset, bench)
+        last = sigs.iloc[-1]
+        sig_text = translate(message.chat.id, f"signal_{last['Signal']}")
+        bot.reply_to(
+            message,
+            translate(
+                message.chat.id,
+                "signal_result",
+                symbol=symbol,
+                score=f"{last['Score']:.1f}",
+                signal=sig_text,
+            ),
+        )
+    except Exception as e:
+        logger.error("signal_command error for %s: %s", symbol, e)
+        bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
 
 
 @bot.message_handler(commands=["menu", "help"])

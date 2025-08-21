@@ -40,6 +40,11 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
 - `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
   (Candlestick-Daten werden täglich in `cache.db` gespeichert; aktuelle Preise werden live geladen)
+- `/signal SYMBOL BENCHMARK` – Berechnet Score und Signal für `SYMBOL` relativ zur `BENCHMARK`
+
+## Beispiel: Trading-Signale
+
+Eine einfache Umsetzung eines regelbasierten Systems findet sich in `trading_strategy.py`. Das Skript berechnet technische Indikatoren, vergibt einen Score und erzeugt Kauf- bzw. Verkaufssignale auf Basis täglicher OHLCV-Daten.
 
 ## Hinweise
 

@@ -59,5 +59,11 @@
   "language_set": "✅ Sprache auf {code} gesetzt.",
   "language_invalid": "⚠ Sprache {code} wird nicht unterstützt."
   "usage_summarytime": "⚠ Nutzung: /summarytime HH:MM",
-  "summary_time_set": "🕒 Tageszusammenfassung um {time} eingestellt."
+  "summary_time_set": "🕒 Tageszusammenfassung um {time} eingestellt.",
+  "usage_signal": "⚠ Nutzung: /signal SYMBOL BENCHMARK",
+  "signal_error": "⚠ Signal für {symbol} konnte nicht erzeugt werden.",
+  "signal_result": "📈 {symbol}: Score {score}, Signal {signal}",
+  "signal_buy": "kaufen",
+  "signal_sell": "verkaufen",
+  "signal_hold": "halten"
 }
