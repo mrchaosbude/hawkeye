@@ -55,10 +55,9 @@ def on_balance_volume(df: pd.DataFrame) -> pd.Series:
 
 
 def volume_percentile(series: pd.Series, window: int = 126) -> pd.Series:
-    def pct_rank(x):
-        return x.rank(pct=True).iloc[-1] * 100
-
-    return series.rolling(window).apply(pct_rank, raw=False)
+    """Ratio of volume to its rolling 60th percentile."""
+    q60 = series.rolling(window).quantile(0.6)
+    return series / q60
 
 
 def relative_strength(asset: pd.Series, benchmark: pd.Series) -> pd.Series:
@@ -113,7 +112,7 @@ def compute_score(row: pd.Series, weights: Scores) -> float:
 
     vol_score = (
         weights.volume
-        if 60 <= row["Volume_pct"] <= 90 and row["OBV_slope"] > 0
+        if 1 <= row["Volume_pct"] <= 1.5 and row["OBV_slope"] > 0
         else 0
     )
 
