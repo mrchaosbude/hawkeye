@@ -1046,9 +1046,6 @@ def show_current_prices(message):
 
 @bot.message_handler(commands=["summary"])
 def summary_command(message):
-    if not is_admin(message.chat.id):
-        bot.reply_to(message, translate(message.chat.id, "admin_only"))
-        return
     send_daily_summary(message.chat.id)
 
 
