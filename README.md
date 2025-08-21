@@ -84,6 +84,9 @@ signals = strategy.generate_signals(asset, bench)
 print(signals[["Signal"]].tail())
 ```
 
+Fehlen Fundamentaldaten, setzt die Momentum-Strategie einen neutralen Wert
+von `0.5` an. Diese Annahme entspricht dem Hawkeye-Blueprint.
+
 ### Arbitrage-Strategie
 
 Für eine einfache Arbitrage zwischen Binance und Coinbase kannst du die

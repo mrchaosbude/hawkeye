@@ -118,8 +118,9 @@ def compute_score(row: pd.Series, weights: Scores) -> float:
 
     rs_score = weights.rel_strength if row["Rel_Strength"] > 0 else 0
 
-    # Fundamentals placeholder: 0 if not provided.
-    fund_score = weights.fundamentals * row.get("Fundamental", 0)
+    # Fundamentals placeholder: assume neutral 0.5 if not provided.
+    # This mirrors the Hawkeye blueprint's default assumption.
+    fund_score = weights.fundamentals * row.get("Fundamental", 0.5)
 
     return (trend_score + vol_score + rs_score + fund_score) * 100
 
