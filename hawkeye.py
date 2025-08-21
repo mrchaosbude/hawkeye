@@ -441,9 +441,10 @@ def generate_binance_candlestick(symbol):
             ax, ohlc, colorup="green", colordown="red", width=0.6 / 24
         )
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-        ax.set_xticks([])
-        ax.set_yticks([])
+        ax.set_xlabel("Time (UTC)")
+        ax.set_ylabel("Price")
         ax.set_title(symbol)
+        fig.tight_layout()
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
         plt.close(fig)
