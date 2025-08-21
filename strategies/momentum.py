@@ -62,7 +62,14 @@ def volume_percentile(series: pd.Series, window: int = 126) -> pd.Series:
 
 
 def relative_strength(asset: pd.Series, benchmark: pd.Series) -> pd.Series:
-    return asset.pct_change(252) - benchmark.pct_change(252)
+    aligned = pd.concat([asset, benchmark], axis=1).ffill()
+    asset_aligned = aligned.iloc[:, 0]
+    bench_aligned = aligned.iloc[:, 1]
+    return (
+        (asset_aligned / asset_aligned.shift(252))
+        / (bench_aligned / bench_aligned.shift(252))
+        - 1
+    )
 
 
 def compute_features(df: pd.DataFrame, benchmark: pd.DataFrame) -> pd.DataFrame:
