@@ -771,6 +771,20 @@ def show_top10(message):
             bot.send_message(message.chat.id, caption + " - Keine Chartdaten")
 
 
+@bot.message_handler(commands=["history"])
+def show_history(message):
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, "⚠ Nutzung: /history SYMBOL")
+        return
+    symbol = parts[0].upper()
+    chart = generate_binance_candlestick(symbol)
+    if chart:
+        bot.send_photo(message.chat.id, chart, caption=symbol)
+    else:
+        bot.reply_to(message, f"⚠ Chart für {symbol} konnte nicht erstellt werden.")
+
+
 @bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
     cfg = get_user(message.chat.id)
