@@ -2,6 +2,7 @@ import os
 import json
 import requests
 import telebot
+from telebot.apihelper import ApiException
 import schedule
 import time
 import threading
@@ -125,8 +126,8 @@ def get_price(sym):
         price = float(r.json()["markPrice"])
         logger.debug("get_price %s -> %s", sym, price)
         return price
-    except Exception as e:
-        logger.debug("get_price error for %s: %s", sym, e)
+    except (requests.RequestException, ValueError, KeyError) as e:
+        logger.error("get_price error for %s: %s", sym, e)
         return None
 
 
@@ -172,7 +173,8 @@ def generate_buy_sell_chart(sym):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except Exception:
+    except (requests.RequestException, ValueError) as e:
+        logger.error("generate_buy_sell_chart error for %s: %s", sym, e)
         return None
 
 
@@ -198,8 +200,8 @@ def get_top10_coingecko():
                     coin["price_change_percentage_24h"] = pct
         logger.debug("get_top10_coingecko returned %d coins", len(data))
         return data
-    except Exception as e:
-        logger.debug("get_top10_coingecko error: %s", e)
+    except (requests.RequestException, ValueError) as e:
+        logger.error("get_top10_coingecko error: %s", e)
         return []
 
 
@@ -227,8 +229,8 @@ def get_top10_binance():
             )
         logger.debug("get_top10_binance returned %d coins", len(coins))
         return coins
-    except Exception as e:
-        logger.debug("get_top10_binance error: %s", e)
+    except (requests.RequestException, ValueError) as e:
+        logger.error("get_top10_binance error: %s", e)
         return []
 
 
@@ -289,8 +291,8 @@ def generate_top10_chart(coins):
                         )
                     time.sleep(1)
                     break
-                except Exception as e:
-                    logger.debug(
+                except (requests.RequestException, ValueError) as e:
+                    logger.error(
                         "Coingecko OHLC error for %s: %s (attempt %d)",
                         symbol,
                         e,
@@ -336,7 +338,8 @@ def generate_top10_chart(coins):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except Exception:
+    except (ValueError, RuntimeError) as e:
+        logger.error("generate_top10_chart error: %s", e)
         return None
 
 
@@ -372,8 +375,8 @@ def generate_binance_candlestick(symbol):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except Exception as e:
-        logger.debug(
+    except (requests.RequestException, ValueError) as e:
+        logger.error(
             "generate_binance_candlestick error for %s: %s", symbol, e
         )
         return None
@@ -412,8 +415,8 @@ def cache_top10_candles():
                         (symbol, int(t / 1000), o, h, l, c),
                     )
                 time.sleep(1)
-            except Exception as e:
-                logger.debug(
+            except (requests.RequestException, sqlite3.Error, ValueError) as e:
+                logger.error(
                     "cache_top10_candles OHLC error for %s: %s", symbol, e
                 )
         conn.commit()
@@ -470,8 +473,8 @@ def generate_top10_chart_cached(coins):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except Exception as e:
-        logger.debug("generate_top10_chart_cached error: %s", e)
+    except (ValueError, RuntimeError) as e:
+        logger.error("generate_top10_chart_cached error: %s", e)
         return None
 
 
@@ -516,8 +519,8 @@ def fetch_live_prices(coins):
                 coin["price_change_percentage_24h"] = info.get(
                     "price_change_percentage_24h"
                 ) or info.get("price_change_percentage_24h_in_currency")
-    except Exception as e:
-        logger.debug("fetch_live_prices error: %s", e)
+    except (requests.RequestException, ValueError) as e:
+        logger.error("fetch_live_prices error: %s", e)
 
 # === FUNKTIONEN: Checks ===
 def check_price():
@@ -572,12 +575,12 @@ def check_updates():
         if local != remote:
             subprocess.run(["git", "pull"], check=True)
             os.execv(sys.executable, [sys.executable] + sys.argv)
-    except Exception as e:
+    except (subprocess.SubprocessError, OSError) as e:
         logger.exception("Fehler beim Aktualisieren")
         for cid in users.keys():
             try:
                 bot.send_message(cid, f"⚠️ Update-Fehler: {e}")
-            except Exception:
+            except ApiException:
                 logger.exception("Fehler beim Senden der Update-Fehlermeldung")
 
 
