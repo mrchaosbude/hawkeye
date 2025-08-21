@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
 from datetime import datetime
+import logging
 
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
@@ -544,14 +545,24 @@ def check_price():
 
 def check_updates():
     try:
-        subprocess.run(["git", "fetch"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "fetch"],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         local = subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
         remote = subprocess.check_output(["git", "rev-parse", "@{u}"]).decode().strip()
         if local != remote:
             subprocess.run(["git", "pull"], check=True)
             os.execv(sys.executable, [sys.executable] + sys.argv)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.exception("Fehler beim Aktualisieren")
+        for cid in users.keys():
+            try:
+                bot.send_message(cid, f"⚠️ Update-Fehler: {e}")
+            except Exception:
+                logging.exception("Fehler beim Senden der Update-Fehlermeldung")
 
 
 # === TELEGRAM COMMANDS ===
