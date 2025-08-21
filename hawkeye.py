@@ -122,13 +122,7 @@ def get_user(chat_id):
     cid = str(chat_id)
     if cid not in users:
         users[cid] = {
-            "symbols": {
-                "BTCUSDT": {
-                    "stop_loss": 42000.0,
-                    "take_profit": 46000.0,
-                    "trailing_percent": None,
-                }
-            },
+            "symbols": {},
             "notifications": True,
             "language": "de",
         }
