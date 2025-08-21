@@ -23,7 +23,8 @@ pip install requests telebot schedule matplotlib mplfinance
    `"role": "admin"`, um globale Einstellungen ändern zu dürfen. Optional
    lässt sich mit `"max_symbols"` die maximale Anzahl an Symbolen pro Nutzer
    festlegen (Standard 5). Über den Schlüssel `strategy` wählst du die zu
-   verwendende Handelsstrategie (aktuell nur `momentum`).
+   verwendende Handelsstrategie (`momentum` oder `trend_following`).
+   Strategieabhängige Optionen kannst du in `strategy_params` angeben.
 2. Beispielkonfiguration:
 
    ```json
@@ -32,7 +33,12 @@ pip install requests telebot schedule matplotlib mplfinance
      "users": {"123456789": {"role": "admin"}},
      "check_interval": 5,
      "summary_time": "09:00",
-     "strategy": "momentum"
+     "strategy": "trend_following",
+     "strategy_params": {
+       "short_window": 20,
+       "long_window": 50,
+       "donchian_window": 20
+     }
    }
    ```
 3. Starte den Bot anschließend mit:
@@ -61,9 +67,10 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 
 ## Beispiel: Trading-Signale
 
-Die Logik für Handelssignale liegt im Paket `strategies`. Die Standard-
-Implementierung `MomentumStrategy` basiert auf Trends und Relativer Stärke.
-Sie lässt sich auch außerhalb des Bots verwenden:
+Die Logik für Handelssignale liegt im Paket `strategies`. Neben der
+Standard-Implementierung `MomentumStrategy` steht mit
+`TrendFollowingStrategy` eine weitere Strategie bereit. Beide lassen sich
+auch außerhalb des Bots verwenden:
 
 ```python
 from strategies import get_strategy
@@ -72,9 +79,9 @@ import pandas as pd
 asset = pd.read_csv("asset.csv", parse_dates=["Date"], index_col="Date")
 bench = pd.read_csv("benchmark.csv", parse_dates=["Date"], index_col="Date")
 
-strategy = get_strategy("momentum")
+strategy = get_strategy("trend_following", short_window=20, long_window=50)
 signals = strategy.generate_signals(asset, bench)
-print(signals[["Score", "Signal"]].tail())
+print(signals[["Signal"]].tail())
 ```
 
 ## Hinweise

@@ -41,11 +41,13 @@ def load_config():
             "check_interval": 5,
             "summary_time": "09:00",
             "strategy": "momentum",
+            "strategy_params": {},
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
         data.pop("coingecko_api_key", None)
         data.setdefault("strategy", "momentum")
+        data.setdefault("strategy_params", {})
         return data
 
 
@@ -56,6 +58,7 @@ def save_config():
         "check_interval": check_interval,
         "summary_time": summary_time,
         "strategy": strategy_name,
+        "strategy_params": strategy_params,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -101,7 +104,8 @@ users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
 summary_time = config.get("summary_time", "09:00")
 strategy_name = config.get("strategy", "momentum")
-strategy = get_strategy(strategy_name)
+strategy_params = config.get("strategy_params", {})
+strategy = get_strategy(strategy_name, **strategy_params)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 

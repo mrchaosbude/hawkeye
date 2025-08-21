@@ -8,5 +8,10 @@
   },
   "check_interval": 5,
   "summary_time": "09:00",
-  "strategy": "momentum"
+  "strategy": "trend_following",
+  "strategy_params": {
+    "short_window": 20,
+    "long_window": 50,
+    "donchian_window": 20
+  }
 }
