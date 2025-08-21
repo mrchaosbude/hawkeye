@@ -56,33 +56,32 @@ def save_config():
 
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS top10 (
-            symbol TEXT PRIMARY KEY,
-            id TEXT,
-            name TEXT,
-            cached_at INTEGER
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS top10 (
+                symbol TEXT PRIMARY KEY,
+                id TEXT,
+                name TEXT,
+                cached_at INTEGER
+            )
+            """
         )
-        """
-    )
-    cur.execute(
-        """
-        CREATE TABLE IF NOT EXISTS candles (
-            symbol TEXT,
-            timestamp INTEGER,
-            open REAL,
-            high REAL,
-            low REAL,
-            close REAL,
-            PRIMARY KEY(symbol, timestamp)
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS candles (
+                symbol TEXT,
+                timestamp INTEGER,
+                open REAL,
+                high REAL,
+                low REAL,
+                close REAL,
+                PRIMARY KEY(symbol, timestamp)
+            )
+            """
         )
-        """
-    )
-    conn.commit()
-    conn.close()
+        conn.commit()
 
 
 config = load_config()
@@ -386,59 +385,56 @@ def cache_top10_candles():
     if not coins:
         logger.debug("cache_top10_candles: no coins returned")
         return
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("DELETE FROM top10")
-    cur.execute("DELETE FROM candles")
-    now = int(time.time())
-    for coin in coins:
-        symbol = coin.get("symbol", "").upper()
-        coin_id = coin.get("id")
-        name = coin.get("name")
-        cur.execute(
-            "INSERT OR REPLACE INTO top10(symbol, id, name, cached_at) VALUES (?, ?, ?, ?)",
-            (symbol, coin_id, name, now),
-        )
-        try:
-            r = requests.get(
-                f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                params={"vs_currency": "usd", "days": 7},
-                timeout=10,
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM top10")
+        cur.execute("DELETE FROM candles")
+        now = int(time.time())
+        for coin in coins:
+            symbol = coin.get("symbol", "").upper()
+            coin_id = coin.get("id")
+            name = coin.get("name")
+            cur.execute(
+                "INSERT OR REPLACE INTO top10(symbol, id, name, cached_at) VALUES (?, ?, ?, ?)",
+                (symbol, coin_id, name, now),
             )
-            r.raise_for_status()
-            raw = r.json()
-            for t, o, h, l, c in raw:
-                cur.execute(
-                    "INSERT OR REPLACE INTO candles(symbol, timestamp, open, high, low, close) VALUES (?, ?, ?, ?, ?, ?)",
-                    (symbol, int(t / 1000), o, h, l, c),
+            try:
+                r = requests.get(
+                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                    params={"vs_currency": "usd", "days": 7},
+                    timeout=10,
                 )
-            time.sleep(1)
-        except Exception as e:
-            logger.debug(
-                "cache_top10_candles OHLC error for %s: %s", symbol, e
-            )
-    conn.commit()
-    conn.close()
+                r.raise_for_status()
+                raw = r.json()
+                for t, o, h, l, c in raw:
+                    cur.execute(
+                        "INSERT OR REPLACE INTO candles(symbol, timestamp, open, high, low, close) VALUES (?, ?, ?, ?, ?, ?)",
+                        (symbol, int(t / 1000), o, h, l, c),
+                    )
+                time.sleep(1)
+            except Exception as e:
+                logger.debug(
+                    "cache_top10_candles OHLC error for %s: %s", symbol, e
+                )
+        conn.commit()
 
 
 def load_cached_top10():
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT symbol, id, name FROM top10 ORDER BY rowid")
-    rows = cur.fetchall()
-    conn.close()
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute("SELECT symbol, id, name FROM top10 ORDER BY rowid")
+        rows = cur.fetchall()
     return [{"symbol": sym, "id": cid, "name": name} for sym, cid, name in rows]
 
 
 def get_cached_ohlc(symbol):
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT timestamp, open, high, low, close FROM candles WHERE symbol=? ORDER BY timestamp",
-        (symbol,),
-    )
-    rows = cur.fetchall()
-    conn.close()
+    with sqlite3.connect(DB_FILE) as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT timestamp, open, high, low, close FROM candles WHERE symbol=? ORDER BY timestamp",
+            (symbol,),
+        )
+        rows = cur.fetchall()
     ohlc = []
     for ts, o, h, l, c in rows:
         ohlc.append([mdates.date2num(datetime.utcfromtimestamp(ts)), o, h, l, c])
