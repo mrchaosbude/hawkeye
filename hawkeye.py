@@ -44,16 +44,18 @@ def load_config():
 
 
 def save_config():
+    data = {
+        "telegram_token": TELEGRAM_TOKEN,
+        "users": users,
+        "check_interval": check_interval,
+    }
+    # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
+    for cfg in data["users"].values():
+        for sym_cfg in cfg.get("symbols", {}).values():
+            if sym_cfg.get("trailing_percent") is None:
+                sym_cfg.pop("trailing_percent", None)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "telegram_token": TELEGRAM_TOKEN,
-                "users": users,
-                "check_interval": check_interval,
-            },
-            f,
-            indent=2,
-        )
+        json.dump(data, f, indent=2)
 
 
 def init_db():
@@ -100,7 +102,11 @@ def get_user(chat_id):
     if cid not in users:
         users[cid] = {
             "symbols": {
-                "BTCUSDT": {"stop_loss": 42000.0, "take_profit": 46000.0}
+                "BTCUSDT": {
+                    "stop_loss": 42000.0,
+                    "take_profit": 46000.0,
+                    "trailing_percent": None,
+                }
             },
             "notifications": True,
         }
@@ -113,8 +119,11 @@ def get_user(chat_id):
         users[cid].setdefault("symbols", {})[sym] = {
             "stop_loss": sl,
             "take_profit": tp,
+            "trailing_percent": None,
         }
         save_config()
+    for sym_cfg in users[cid].get("symbols", {}).values():
+        sym_cfg.setdefault("trailing_percent", None)
     return users[cid]
 
 
@@ -577,8 +586,32 @@ def check_price():
             if price:
                 sl = data.get("stop_loss")
                 tp = data.get("take_profit")
+                trailing = data.get("trailing_percent")
+                if trailing is not None:
+                    candidate_sl = price * (1 - trailing / 100)
+                    if sl is None or sl <= 0:
+                        data["stop_loss"] = candidate_sl
+                        sl = candidate_sl
+                        save_config()
+                        bot.send_message(
+                            cid,
+                            f"📈 Trailing Stop-Loss für {sym} initialisiert bei {sl:.2f} ({trailing}%)",
+                        )
+                    elif price > sl and candidate_sl > sl:
+                        data["stop_loss"] = candidate_sl
+                        sl = candidate_sl
+                        save_config()
+                        bot.send_message(
+                            cid,
+                            f"🔄 Trailing Stop-Loss für {sym} auf {sl:.2f} angehoben ({trailing}%)",
+                        )
                 if sl is not None and sl > 0 and price <= sl:
-                    bot.send_message(cid, f"⚠ Stop-Loss erreicht bei {price} ({sym})")
+                    msg = (
+                        f"⚠ Trailing Stop-Loss erreicht bei {price} ({sym})"
+                        if trailing is not None
+                        else f"⚠ Stop-Loss erreicht bei {price} ({sym})"
+                    )
+                    bot.send_message(cid, msg)
                     chart = generate_buy_sell_chart(sym)
                     if chart:
                         bot.send_photo(cid, chart)
@@ -651,10 +684,9 @@ def set_config(message):
             "⚠ Stop-Loss und Take-Profit müssen Zahlen sein. Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT",
         )
         return
-    cfg.setdefault("symbols", {})[new_symbol.upper()] = {
-        "stop_loss": stop_loss,
-        "take_profit": take_profit,
-    }
+    entry = cfg.setdefault("symbols", {}).setdefault(new_symbol.upper(), {})
+    entry["stop_loss"] = stop_loss
+    entry["take_profit"] = take_profit
     save_config()
     bot.reply_to(
         message,
@@ -688,6 +720,52 @@ def set_percent_command(message):
         message,
         f"📊 Prozent-Alarm für {symbol.upper()} bei ±{percent}% gesetzt (Basis {price}).",
     )
+
+
+@bot.message_handler(commands=["trail"])
+def set_trailing_command(message):
+    """Trailing Stop-Loss setzen oder entfernen."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) == 0 or len(parts) > 2:
+        bot.reply_to(
+            message,
+            "⚠ Nutzung: /trail SYMBOL PROZENT oder /trail SYMBOL zum Entfernen",
+        )
+        return
+    symbol = parts[0].upper()
+    entry = cfg.setdefault("symbols", {}).setdefault(symbol, {})
+    if len(parts) == 1:
+        entry.pop("trailing_percent", None)
+        save_config()
+        bot.reply_to(message, f"❎ Trailing Stop-Loss für {symbol} entfernt.")
+        return
+    try:
+        percent = float(parts[1])
+    except ValueError:
+        bot.reply_to(message, "⚠ Prozent muss eine Zahl sein. Nutzung: /trail SYMBOL PROZENT")
+        return
+    if percent <= 0:
+        entry.pop("trailing_percent", None)
+        save_config()
+        bot.reply_to(message, f"❎ Trailing Stop-Loss für {symbol} entfernt.")
+        return
+    entry["trailing_percent"] = percent
+    price = get_price(symbol)
+    if price is not None:
+        sl = price * (1 - percent / 100)
+        entry["stop_loss"] = sl
+        save_config()
+        bot.reply_to(
+            message,
+            f"📈 Trailing Stop-Loss von {percent}% für {symbol} gesetzt. Stop-Loss: {sl:.2f}",
+        )
+    else:
+        save_config()
+        bot.reply_to(
+            message,
+            f"📈 Trailing Stop-Loss von {percent}% für {symbol} gesetzt.",
+        )
 
 
 @bot.message_handler(commands=["remove"])
