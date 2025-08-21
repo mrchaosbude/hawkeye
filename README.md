@@ -39,6 +39,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
 - `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
 - `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
+  (Candlestick-Daten werden täglich in `cache.db` gespeichert; aktuelle Preise werden live geladen)
 
 ## Hinweise
 
