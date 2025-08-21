@@ -15,6 +15,13 @@ from mplfinance.original_flavor import candlestick_ohlc
 from datetime import datetime
 import logging
 
+LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL_NAME, logging.INFO),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 # === KONFIGURATION ===
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
@@ -117,10 +124,10 @@ def get_price(sym):
         r = requests.get(BINANCE_PRICE_URL, params={"symbol": sym})
         r.raise_for_status()
         price = float(r.json()["markPrice"])
-        print(f"[DEBUG] get_price {sym} -> {price}")
+        logger.debug("get_price %s -> %s", sym, price)
         return price
     except Exception as e:
-        print(f"[DEBUG] get_price error for {sym}: {e}")
+        logger.debug("get_price error for %s: %s", sym, e)
         return None
 
 
@@ -190,10 +197,10 @@ def get_top10_coingecko():
                 pct = coin.get("price_change_percentage_24h_in_currency")
                 if pct is not None:
                     coin["price_change_percentage_24h"] = pct
-        print(f"[DEBUG] get_top10_coingecko returned {len(data)} coins")
+        logger.debug("get_top10_coingecko returned %d coins", len(data))
         return data
     except Exception as e:
-        print(f"[DEBUG] get_top10_coingecko error: {e}")
+        logger.debug("get_top10_coingecko error: %s", e)
         return []
 
 
@@ -219,59 +226,63 @@ def get_top10_binance():
                     ),
                 }
             )
-        print(f"[DEBUG] get_top10_binance returned {len(coins)} coins")
+        logger.debug("get_top10_binance returned %d coins", len(coins))
         return coins
     except Exception as e:
-        print(f"[DEBUG] get_top10_binance error: {e}")
+        logger.debug("get_top10_binance error: %s", e)
         return []
 
 
 def get_top10_cryptos():
     coins = get_top10_coingecko()
     if coins:
-        print(f"[DEBUG] get_top10_cryptos fetched {len(coins)} coins from coingecko")
+        logger.debug(
+            "get_top10_cryptos fetched %d coins from coingecko", len(coins)
+        )
         return coins, "coingecko"
-    print("[DEBUG] get_top10_cryptos: falling back to binance")
+    logger.debug("get_top10_cryptos: falling back to binance")
     coins = get_top10_binance()
     return coins, "binance"
 
 
 def generate_top10_chart(coins):
     """Erstellt Candlestick-Charts für die Top-10-Coins."""
-    print("[DEBUG] generate_top10_chart using coingecko")
+    logger.debug("generate_top10_chart using coingecko")
     try:
         fig, axes = plt.subplots(5, 2, figsize=(10, 12))
         axes = axes.flatten()
         for ax, coin in zip(axes, coins):
             symbol = coin.get("symbol")
-            print(f"[DEBUG] Processing {symbol}")
+            logger.debug("Processing %s", symbol)
             ohlc_data = []
             coin_id = coin.get("id")
             backoff = 1
             max_attempts = 5
             for attempt in range(1, max_attempts + 1):
                 try:
-                    print(
-                        f"[DEBUG] Requesting Coingecko OHLC for {coin_id} (attempt {attempt})"
+                    logger.debug(
+                        "Requesting Coingecko OHLC for %s (attempt %d)",
+                        coin_id,
+                        attempt,
                     )
                     r = requests.get(
                         f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
                         params={"vs_currency": "usd", "days": 7},
                         timeout=10,
                     )
-                    print(f"[DEBUG] Coingecko status {r.status_code}")
+                    logger.debug("Coingecko status %s", r.status_code)
                     if r.status_code == 429:
                         wait = 60
-                        print(
-                            f"[DEBUG] 429 for {symbol}, sleeping {wait}s before retry"
+                        logger.debug(
+                            "429 for %s, sleeping %s s before retry", symbol, wait
                         )
                         time.sleep(wait)
                         backoff *= 2
                         continue
                     r.raise_for_status()
                     raw = r.json()
-                    print(
-                        f"[DEBUG] Coingecko returned {len(raw)} entries for {symbol}"
+                    logger.debug(
+                        "Coingecko returned %d entries for %s", len(raw), symbol
                     )
                     for t, o, h, l, c in raw:
                         ohlc_data.append(
@@ -280,24 +291,29 @@ def generate_top10_chart(coins):
                     time.sleep(1)
                     break
                 except Exception as e:
-                    print(
-                        f"[DEBUG] Coingecko OHLC error for {symbol}: {e} (attempt {attempt})"
+                    logger.debug(
+                        "Coingecko OHLC error for %s: %s (attempt %d)",
+                        symbol,
+                        e,
+                        attempt,
                     )
                     if attempt == max_attempts:
                         ohlc_data = []
-                        print(
-                            f"[DEBUG] Failed to fetch OHLC for {symbol} after {max_attempts} attempts"
+                        logger.debug(
+                            "Failed to fetch OHLC for %s after %d attempts",
+                            symbol,
+                            max_attempts,
                         )
                     else:
                         wait = backoff
-                        print(
-                            f"[DEBUG] Retrying {symbol} in {wait}s"
-                        )
+                        logger.debug("Retrying %s in %s s", symbol, wait)
                         time.sleep(wait)
                         backoff *= 2
 
             if ohlc_data:
-                print(f"[DEBUG] Plotting {symbol} with {len(ohlc_data)} entries")
+                logger.debug(
+                    "Plotting %s with %d entries", symbol, len(ohlc_data)
+                )
                 candlestick_ohlc(
                     ax,
                     ohlc_data,
@@ -309,7 +325,7 @@ def generate_top10_chart(coins):
                 ax.set_xticks([])
                 ax.set_yticks([])
             else:
-                print(f"[DEBUG] No OHLC data for {symbol}")
+                logger.debug("No OHLC data for %s", symbol)
                 ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
             ax.set_title(coin.get("symbol", "").upper())
 
@@ -358,15 +374,17 @@ def generate_binance_candlestick(symbol):
         buf.seek(0)
         return buf
     except Exception as e:
-        print(f"[DEBUG] generate_binance_candlestick error for {symbol}: {e}")
+        logger.debug(
+            "generate_binance_candlestick error for %s: %s", symbol, e
+        )
         return None
 
 
 def cache_top10_candles():
-    print("[DEBUG] cache_top10_candles start")
+    logger.debug("cache_top10_candles start")
     coins = get_top10_coingecko()
     if not coins:
-        print("[DEBUG] cache_top10_candles: no coins returned")
+        logger.debug("cache_top10_candles: no coins returned")
         return
     conn = sqlite3.connect(DB_FILE)
     cur = conn.cursor()
@@ -396,7 +414,9 @@ def cache_top10_candles():
                 )
             time.sleep(1)
         except Exception as e:
-            print(f"[DEBUG] cache_top10_candles OHLC error for {symbol}: {e}")
+            logger.debug(
+                "cache_top10_candles OHLC error for %s: %s", symbol, e
+            )
     conn.commit()
     conn.close()
 
@@ -455,7 +475,7 @@ def generate_top10_chart_cached(coins):
         buf.seek(0)
         return buf
     except Exception as e:
-        print(f"[DEBUG] generate_top10_chart_cached error: {e}")
+        logger.debug("generate_top10_chart_cached error: %s", e)
         return None
 
 
@@ -501,7 +521,7 @@ def fetch_live_prices(coins):
                     "price_change_percentage_24h"
                 ) or info.get("price_change_percentage_24h_in_currency")
     except Exception as e:
-        print(f"[DEBUG] fetch_live_prices error: {e}")
+        logger.debug("fetch_live_prices error: %s", e)
 
 # === FUNKTIONEN: Checks ===
 def check_price():
@@ -557,12 +577,12 @@ def check_updates():
             subprocess.run(["git", "pull"], check=True)
             os.execv(sys.executable, [sys.executable] + sys.argv)
     except Exception as e:
-        logging.exception("Fehler beim Aktualisieren")
+        logger.exception("Fehler beim Aktualisieren")
         for cid in users.keys():
             try:
                 bot.send_message(cid, f"⚠️ Update-Fehler: {e}")
             except Exception:
-                logging.exception("Fehler beim Senden der Update-Fehlermeldung")
+                logger.exception("Fehler beim Senden der Update-Fehlermeldung")
 
 
 # === TELEGRAM COMMANDS ===
