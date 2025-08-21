@@ -57,7 +57,7 @@
   "bot_running": "🤖 Bot running...",
   "language_usage": "⚠ Usage: /language CODE (e.g., en, de)",
   "language_set": "✅ Language set to {code}.",
-  "language_invalid": "⚠ Language {code} not supported."
+  "language_invalid": "⚠ Language {code} not supported.",
   "usage_summarytime": "⚠ Usage: /summarytime HH:MM",
   "summary_time_set": "🕒 Daily summary time set to {time}.",
   "usage_signal": "⚠ Usage: /signal SYMBOL BENCHMARK",
