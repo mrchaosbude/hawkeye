@@ -458,6 +458,28 @@ def generate_top10_chart_cached(coins):
         return None
 
 
+def generate_cached_candle_chart(symbol):
+    """Erstellt ein Candlestick-Diagramm aus zwischengespeicherten Daten."""
+    ohlc_data = get_cached_ohlc(symbol)
+    if not ohlc_data:
+        return None
+    fig, ax = plt.subplots(figsize=(6, 4))
+    candlestick_ohlc(
+        ax,
+        ohlc_data,
+        colorup="green",
+        colordown="red",
+        width=0.6 / 24,
+    )
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
+    fig.tight_layout()
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png")
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
 def fetch_live_prices(coins):
     ids = ",".join([coin["id"] for coin in coins])
     try:
@@ -657,21 +679,21 @@ def show_top10(message):
         bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
         return
     fetch_live_prices(coins)
-    lines = ["🏆 Top 10 Kryptowährungen:"]
+    bot.send_message(message.chat.id, "🏆 Top 10 Kryptowährungen:")
     for i, coin in enumerate(coins, start=1):
+        symbol = coin.get("symbol", "").upper()
         price = coin.get("current_price")
         change = coin.get("price_change_percentage_24h")
         price_str = f"{price:.2f}" if isinstance(price, (int, float)) else "N/A"
         change_str = f"{change:+.2f}%" if isinstance(change, (int, float)) else "N/A"
-        lines.append(
-            f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price_str} USD ({change_str})"
+        caption = (
+            f"{i}. {coin.get('name')} ({symbol}): {price_str} USD ({change_str})"
         )
-    text = "\n".join(lines)
-    chart = generate_top10_chart_cached(coins)
-    if chart:
-        bot.send_photo(message.chat.id, chart, caption=text)
-    else:
-        bot.reply_to(message, text)
+        chart = generate_cached_candle_chart(symbol)
+        if chart:
+            bot.send_photo(message.chat.id, chart, caption=caption)
+        else:
+            bot.send_message(message.chat.id, caption + " - Keine Chartdaten")
 
 
 @bot.message_handler(commands=["menu", "help"])
