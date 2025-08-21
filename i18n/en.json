@@ -59,5 +59,11 @@
   "language_set": "✅ Language set to {code}.",
   "language_invalid": "⚠ Language {code} not supported."
   "usage_summarytime": "⚠ Usage: /summarytime HH:MM",
-  "summary_time_set": "🕒 Daily summary time set to {time}."
+  "summary_time_set": "🕒 Daily summary time set to {time}.",
+  "usage_signal": "⚠ Usage: /signal SYMBOL BENCHMARK",
+  "signal_error": "⚠ Signal for {symbol} could not be generated.",
+  "signal_result": "📈 {symbol}: score {score}, signal {signal}",
+  "signal_buy": "buy",
+  "signal_sell": "sell",
+  "signal_hold": "hold"
 }
