@@ -28,6 +28,7 @@ BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 DB_FILE = "cache.db"
+I18N_DIR = "i18n"
 
 
 def load_config():
@@ -96,6 +97,21 @@ bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
 init_db()
 
+translations = {}
+
+
+def load_translations():
+    if not os.path.isdir(I18N_DIR):
+        return
+    for fname in os.listdir(I18N_DIR):
+        if fname.endswith(".json"):
+            code = fname.split(".")[0]
+            with open(os.path.join(I18N_DIR, fname), encoding="utf-8") as f:
+                translations[code] = json.load(f)
+
+
+load_translations()
+
 
 def get_user(chat_id):
     cid = str(chat_id)
@@ -109,6 +125,7 @@ def get_user(chat_id):
                 }
             },
             "notifications": True,
+            "language": "de",
         }
         save_config()
     # Sicherstellen, dass ältere Konfigurationen migriert werden
@@ -124,7 +141,20 @@ def get_user(chat_id):
         save_config()
     for sym_cfg in users[cid].get("symbols", {}).values():
         sym_cfg.setdefault("trailing_percent", None)
+    users[cid].setdefault("language", "de")
     return users[cid]
+
+
+def translate(chat_id, key, **kwargs):
+    if chat_id is None:
+        lang = "de"
+    else:
+        lang = get_user(chat_id).get("language", "de")
+    text = translations.get(lang, {}).get(key, translations.get("en", {}).get(key, key))
+    try:
+        return text.format(**kwargs)
+    except KeyError:
+        return text
 
 
 # === FUNKTIONEN ===
@@ -372,7 +402,7 @@ def generate_top10_chart(coins):
                 ax.set_yticks([])
             else:
                 logger.debug("No OHLC data for %s", symbol)
-                ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
+                ax.text(0.5, 0.5, translate(None, "no_data"), ha="center", va="center")
             ax.set_title(coin.get("symbol", "").upper())
 
         for ax in axes[len(coins):]:
@@ -515,7 +545,7 @@ def generate_top10_chart_cached(coins):
                 ax.set_xticks([])
                 ax.set_yticks([])
             else:
-                ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
+                ax.text(0.5, 0.5, translate(None, "no_data"), ha="center", va="center")
             ax.set_title(symbol)
         for ax in axes[len(coins):]:
             ax.axis("off")
@@ -595,7 +625,13 @@ def check_price():
                         save_config()
                         bot.send_message(
                             cid,
-                            f"📈 Trailing Stop-Loss für {sym} initialisiert bei {sl:.2f} ({trailing}%)",
+                            translate(
+                                cid,
+                                "trailing_init",
+                                symbol=sym,
+                                sl=f"{sl:.2f}",
+                                percent=trailing,
+                            ),
                         )
                     elif price > sl and candidate_sl > sl:
                         data["stop_loss"] = candidate_sl
@@ -603,20 +639,41 @@ def check_price():
                         save_config()
                         bot.send_message(
                             cid,
-                            f"🔄 Trailing Stop-Loss für {sym} auf {sl:.2f} angehoben ({trailing}%)",
+                            translate(
+                                cid,
+                                "trailing_raise",
+                                symbol=sym,
+                                sl=f"{sl:.2f}",
+                                percent=trailing,
+                            ),
                         )
                 if sl is not None and sl > 0 and price <= sl:
                     msg = (
-                        f"⚠ Trailing Stop-Loss erreicht bei {price} ({sym})"
+                        translate(
+                            cid,
+                            "trailing_stop_reached",
+                            price=price,
+                            symbol=sym,
+                        )
                         if trailing is not None
-                        else f"⚠ Stop-Loss erreicht bei {price} ({sym})"
+                        else translate(
+                            cid, "stop_loss_reached", price=price, symbol=sym
+                        )
                     )
                     bot.send_message(cid, msg)
                     chart = generate_buy_sell_chart(sym)
                     if chart:
                         bot.send_photo(cid, chart)
                 elif tp is not None and tp > 0 and price >= tp:
-                    bot.send_message(cid, f"✅ Take-Profit erreicht bei {price} ({sym})")
+                    bot.send_message(
+                        cid,
+                        translate(
+                            cid,
+                            "take_profit_reached",
+                            price=price,
+                            symbol=sym,
+                        ),
+                    )
                     chart = generate_buy_sell_chart(sym)
                     if chart:
                         bot.send_photo(cid, chart)
@@ -625,12 +682,22 @@ def check_price():
                 if percent is not None and base_price is not None:
                     change = (price - base_price) / base_price * 100
                     if abs(change) >= percent:
-                        direction = "gestiegen" if change > 0 else "gefallen"
+                        direction = (
+                            translate(cid, "direction_up")
+                            if change > 0
+                            else translate(cid, "direction_down")
+                        )
                         bot.send_message(
                             cid,
-                            (
-                                f"📊 {sym}: Preis ist von {base_price:.2f} auf {price:.2f} {direction} "
-                                f"({change:+.2f}%, Schwelle {percent}%). Basispreis aktualisiert."
+                            translate(
+                                cid,
+                                "price_change",
+                                symbol=sym,
+                                base=f"{base_price:.2f}",
+                                price=f"{price:.2f}",
+                                direction=direction,
+                                change=f"{change:+.2f}",
+                                percent=percent,
                             ),
                         )
                         chart = generate_buy_sell_chart(sym)
@@ -657,7 +724,7 @@ def check_updates():
         logger.exception("Fehler beim Aktualisieren")
         for cid in users.keys():
             try:
-                bot.send_message(cid, f"⚠️ Update-Fehler: {e}")
+                bot.send_message(cid, translate(cid, "update_error", e=e))
             except ApiException:
                 logger.exception("Fehler beim Senden der Update-Fehlermeldung")
 
@@ -669,20 +736,14 @@ def set_config(message):
     cfg = get_user(message.chat.id)
     parts = message.text.split()[1:]
     if len(parts) != 3:
-        bot.reply_to(
-            message,
-            "⚠ Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT (z. B. /set ETHUSDT 40000 45000)",
-        )
+        bot.reply_to(message, translate(message.chat.id, "usage_set"))
         return
     new_symbol, new_stop_loss, new_take_profit = parts
     try:
         stop_loss = float(new_stop_loss)
         take_profit = float(new_take_profit)
     except ValueError:
-        bot.reply_to(
-            message,
-            "⚠ Stop-Loss und Take-Profit müssen Zahlen sein. Nutzung: /set SYMBOL STOP_LOSS TAKE_PROFIT",
-        )
+        bot.reply_to(message, translate(message.chat.id, "set_number_error"))
         return
     entry = cfg.setdefault("symbols", {}).setdefault(new_symbol.upper(), {})
     entry["stop_loss"] = stop_loss
@@ -690,7 +751,7 @@ def set_config(message):
     save_config()
     bot.reply_to(
         message,
-        f"✅ Konfiguration für {new_symbol.upper()} aktualisiert."
+        translate(message.chat.id, "config_updated", symbol=new_symbol.upper()),
     )
 
 
@@ -700,17 +761,19 @@ def set_percent_command(message):
     cfg = get_user(message.chat.id)
     parts = message.text.split()[1:]
     if len(parts) != 2:
-        bot.reply_to(message, "⚠ Nutzung: /percent SYMBOL PROZENT")
+        bot.reply_to(message, translate(message.chat.id, "usage_percent"))
         return
     symbol, pct_str = parts
     try:
         percent = float(pct_str)
     except ValueError:
-        bot.reply_to(message, "⚠ Prozent muss eine Zahl sein. Nutzung: /percent SYMBOL PROZENT")
+        bot.reply_to(message, translate(message.chat.id, "percent_nan"))
         return
     price = get_price(symbol.upper())
     if price is None:
-        bot.reply_to(message, f"⚠ Preis für {symbol.upper()} konnte nicht abgerufen werden.")
+        bot.reply_to(
+            message, translate(message.chat.id, "price_fetch_error", symbol=symbol.upper())
+        )
         return
     entry = cfg.setdefault("symbols", {}).setdefault(symbol.upper(), {})
     entry["percent"] = percent
@@ -718,7 +781,13 @@ def set_percent_command(message):
     save_config()
     bot.reply_to(
         message,
-        f"📊 Prozent-Alarm für {symbol.upper()} bei ±{percent}% gesetzt (Basis {price}).",
+        translate(
+            message.chat.id,
+            "percent_set",
+            symbol=symbol.upper(),
+            percent=percent,
+            price=price,
+        ),
     )
 
 
@@ -728,27 +797,28 @@ def set_trailing_command(message):
     cfg = get_user(message.chat.id)
     parts = message.text.split()[1:]
     if len(parts) == 0 or len(parts) > 2:
-        bot.reply_to(
-            message,
-            "⚠ Nutzung: /trail SYMBOL PROZENT oder /trail SYMBOL zum Entfernen",
-        )
+        bot.reply_to(message, translate(message.chat.id, "usage_trail"))
         return
     symbol = parts[0].upper()
     entry = cfg.setdefault("symbols", {}).setdefault(symbol, {})
     if len(parts) == 1:
         entry.pop("trailing_percent", None)
         save_config()
-        bot.reply_to(message, f"❎ Trailing Stop-Loss für {symbol} entfernt.")
+        bot.reply_to(
+            message, translate(message.chat.id, "trailing_removed", symbol=symbol)
+        )
         return
     try:
         percent = float(parts[1])
     except ValueError:
-        bot.reply_to(message, "⚠ Prozent muss eine Zahl sein. Nutzung: /trail SYMBOL PROZENT")
+        bot.reply_to(message, translate(message.chat.id, "percent_nan_trail"))
         return
     if percent <= 0:
         entry.pop("trailing_percent", None)
         save_config()
-        bot.reply_to(message, f"❎ Trailing Stop-Loss für {symbol} entfernt.")
+        bot.reply_to(
+            message, translate(message.chat.id, "trailing_removed", symbol=symbol)
+        )
         return
     entry["trailing_percent"] = percent
     price = get_price(symbol)
@@ -758,13 +828,24 @@ def set_trailing_command(message):
         save_config()
         bot.reply_to(
             message,
-            f"📈 Trailing Stop-Loss von {percent}% für {symbol} gesetzt. Stop-Loss: {sl:.2f}",
+            translate(
+                message.chat.id,
+                "trailing_set_sl",
+                percent=percent,
+                symbol=symbol,
+                sl=f"{sl:.2f}",
+            ),
         )
     else:
         save_config()
         bot.reply_to(
             message,
-            f"📈 Trailing Stop-Loss von {percent}% für {symbol} gesetzt.",
+            translate(
+                message.chat.id,
+                "trailing_set",
+                percent=percent,
+                symbol=symbol,
+            ),
         )
 
 
@@ -774,35 +855,37 @@ def remove_symbol(message):
     cfg = get_user(message.chat.id)
     parts = message.text.split()[1:]
     if len(parts) != 1:
-        bot.reply_to(message, "⚠ Nutzung: /remove SYMBOL")
+        bot.reply_to(message, translate(message.chat.id, "usage_remove"))
         return
     symbol = parts[0].upper()
     if symbol in cfg.get("symbols", {}):
         del cfg["symbols"][symbol]
         save_config()
-        bot.reply_to(message, f"✅ {symbol} entfernt.")
+        bot.reply_to(message, translate(message.chat.id, "symbol_removed", symbol=symbol))
     else:
-        bot.reply_to(message, f"⚠ {symbol} nicht gefunden.")
+        bot.reply_to(message, translate(message.chat.id, "symbol_not_found", symbol=symbol))
 
 
 @bot.message_handler(commands=["interval"])
 def set_interval_command(message):
     parts = message.text.split()[1:]
     if len(parts) != 1:
-        bot.reply_to(message, "⚠ Nutzung: /interval MINUTEN")
+        bot.reply_to(message, translate(message.chat.id, "usage_interval"))
         return
     try:
         new_interval = int(parts[0])
         if new_interval <= 0:
             raise ValueError
     except ValueError:
-        bot.reply_to(message, "⚠ Intervall muss eine positive Ganzzahl sein.")
+        bot.reply_to(message, translate(message.chat.id, "interval_positive"))
         return
     global check_interval
     check_interval = new_interval
     save_config()
     schedule_jobs()
-    bot.reply_to(message, f"⏱ Prüfintervall auf {new_interval} Minuten gesetzt.")
+    bot.reply_to(
+        message, translate(message.chat.id, "interval_set", minutes=new_interval)
+    )
 
 
 @bot.message_handler(commands=["now"])
@@ -810,13 +893,15 @@ def show_current_prices(message):
     cfg = get_user(message.chat.id)
     symbols = cfg.get("symbols", {})
     if not symbols:
-        bot.reply_to(message, "⚠ Keine Symbole konfiguriert.")
+        bot.reply_to(message, translate(message.chat.id, "no_symbols"))
         return
-    lines = ["📈 Aktuelle Preise:"]
+    lines = [translate(message.chat.id, "current_prices_header")]
     for sym in symbols:
         price = get_price(sym)
         if price is None:
-            lines.append(f"{sym}: Preis nicht verfügbar")
+            lines.append(
+                translate(message.chat.id, "price_not_available", symbol=sym)
+            )
         else:
             lines.append(f"{sym}: {price}")
     bot.reply_to(message, "\n".join(lines))
@@ -829,10 +914,10 @@ def show_top10(message):
         cache_top10_candles()
         coins = load_cached_top10()
     if not coins:
-        bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
+        bot.reply_to(message, translate(message.chat.id, "top10_load_error"))
         return
     fetch_live_prices(coins)
-    bot.send_message(message.chat.id, "🏆 Top 10 Kryptowährungen:")
+    bot.send_message(message.chat.id, translate(message.chat.id, "top10_header"))
     for i, coin in enumerate(coins, start=1):
         symbol = coin.get("symbol", "").upper()
         price = coin.get("current_price")
@@ -846,49 +931,70 @@ def show_top10(message):
         if chart:
             bot.send_photo(message.chat.id, chart, caption=caption)
         else:
-            bot.send_message(message.chat.id, caption + " - Keine Chartdaten")
+            bot.send_message(
+                message.chat.id, caption + translate(message.chat.id, "no_chart_data")
+            )
 
 
 @bot.message_handler(commands=["history"])
 def show_history(message):
     parts = message.text.split()[1:]
     if len(parts) != 1:
-        bot.reply_to(message, "⚠ Nutzung: /history SYMBOL")
+        bot.reply_to(message, translate(message.chat.id, "usage_history"))
         return
     symbol = parts[0].upper()
     chart = generate_binance_candlestick(symbol)
     if chart:
         bot.send_photo(message.chat.id, chart, caption=symbol)
     else:
-        bot.reply_to(message, f"⚠ Chart für {symbol} konnte nicht erstellt werden.")
+        bot.reply_to(
+            message, translate(message.chat.id, "history_error", symbol=symbol)
+        )
 
 
 @bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
     cfg = get_user(message.chat.id)
-    status = "an" if cfg.get("notifications", True) else "aus"
+    status = (
+        translate(message.chat.id, "notifications_on")
+        if cfg.get("notifications", True)
+        else translate(message.chat.id, "notifications_off")
+    )
     lines = [
-        "📋 Menü:",
-        "/set SYMBOL STOP_LOSS TAKE_PROFIT - Symbol hinzufügen/ändern",
-        "/remove SYMBOL - Symbol entfernen",
-        "/percent SYMBOL PROZENT - Alarm bei ±PROZENT Preisänderung",
-        "/stop - Benachrichtigungen deaktivieren",
-        "/start - Benachrichtigungen aktivieren",
-        "/menu - Dieses Menü anzeigen",
-        "/interval MINUTEN - Prüfintervall setzen",
-        "/top10 - Top 10 Kryptowährungen anzeigen",
+        translate(message.chat.id, "menu_header"),
+        translate(message.chat.id, "menu_set"),
+        translate(message.chat.id, "menu_remove"),
+        translate(message.chat.id, "menu_percent"),
+        translate(message.chat.id, "menu_stop"),
+        translate(message.chat.id, "menu_start"),
+        translate(message.chat.id, "menu_menu"),
+        translate(message.chat.id, "menu_interval"),
+        translate(message.chat.id, "menu_top10"),
         "",
-        "Aktuelle Konfiguration:",
+        translate(message.chat.id, "menu_config_header"),
     ]
     for sym, data in cfg.get("symbols", {}).items():
         sl = data.get("stop_loss", "-")
         tp = data.get("take_profit", "-")
-        line = f"{sym}: Stop-Loss {sl}, Take-Profit {tp}"
+        line = translate(
+            message.chat.id,
+            "symbol_config",
+            symbol=sym,
+            sl=sl,
+            tp=tp,
+        )
         if "percent" in data:
-            line += f", Prozent-Alarm {data['percent']}% (Basis {data.get('base_price')})"
+            line += translate(
+                message.chat.id,
+                "symbol_config_percent",
+                percent=data["percent"],
+                base=data.get("base_price"),
+            )
         lines.append(line)
-    lines.append(f"Benachrichtigungen: {status}")
-    lines.append(f"Prüfintervall: {check_interval} Minuten")
+    lines.append(translate(message.chat.id, "notifications_line", status=status))
+    lines.append(
+        translate(message.chat.id, "interval_line", minutes=check_interval)
+    )
     bot.reply_to(message, "\n".join(lines))
 
 
@@ -897,7 +1003,7 @@ def stop_notifications(message):
     cfg = get_user(message.chat.id)
     cfg["notifications"] = False
     save_config()
-    bot.reply_to(message, "🔕 Benachrichtigungen deaktiviert. Tippe /start zum Aktivieren.")
+    bot.reply_to(message, translate(message.chat.id, "notifications_stopped"))
 
 
 @bot.message_handler(commands=['start'])
@@ -905,7 +1011,23 @@ def start_notifications(message):
     cfg = get_user(message.chat.id)
     cfg["notifications"] = True
     save_config()
-    bot.reply_to(message, "🔔 Benachrichtigungen aktiviert. Tippe /menu für Hilfe.")
+    bot.reply_to(message, translate(message.chat.id, "notifications_started"))
+
+
+@bot.message_handler(commands=["language"])
+def set_language_command(message):
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, translate(message.chat.id, "language_usage"))
+        return
+    code = parts[0]
+    if code not in translations:
+        bot.reply_to(message, translate(message.chat.id, "language_invalid", code=code))
+        return
+    cfg = get_user(message.chat.id)
+    cfg["language"] = code
+    save_config()
+    bot.reply_to(message, translate(message.chat.id, "language_set", code=code))
 
 
 # === JOB LOOP ===
@@ -929,6 +1051,6 @@ def run_scheduler():
 
 threading.Thread(target=run_scheduler, daemon=True).start()
 
-print("🤖 Bot läuft...")
+print(translate(None, "bot_running"))
 bot.infinity_polling()
 
