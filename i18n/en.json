@@ -20,6 +20,7 @@
   "interval_set": "⏱ Check interval set to {minutes} minutes.",
   "no_symbols": "⚠ No symbols configured.",
   "current_prices_header": "📈 Current prices:",
+  "daily_summary_header": "📊 Daily summary:",
   "price_not_available": "{symbol}: price not available",
   "top10_load_error": "⚠ Top 10 could not be loaded.",
   "top10_header": "🏆 Top 10 cryptocurrencies:",
@@ -57,4 +58,6 @@
   "language_usage": "⚠ Usage: /language CODE (e.g., en, de)",
   "language_set": "✅ Language set to {code}.",
   "language_invalid": "⚠ Language {code} not supported."
+  "usage_summarytime": "⚠ Usage: /summarytime HH:MM",
+  "summary_time_set": "🕒 Daily summary time set to {time}."
 }
