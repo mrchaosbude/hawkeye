@@ -7,5 +7,6 @@
     }
   },
   "check_interval": 5,
-  "summary_time": "09:00"
+  "summary_time": "09:00",
+  "strategy": "momentum"
 }

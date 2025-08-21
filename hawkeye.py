@@ -16,7 +16,7 @@ from mplfinance.original_flavor import candlestick_ohlc
 from datetime import datetime
 import logging
 import pandas as pd
-from trading_strategy import generate_signals
+from strategies import get_strategy
 
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -40,10 +40,12 @@ def load_config():
             "users": {},
             "check_interval": 5,
             "summary_time": "09:00",
+            "strategy": "momentum",
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
         data.pop("coingecko_api_key", None)
+        data.setdefault("strategy", "momentum")
         return data
 
 
@@ -53,6 +55,7 @@ def save_config():
         "users": users,
         "check_interval": check_interval,
         "summary_time": summary_time,
+        "strategy": strategy_name,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -97,6 +100,8 @@ TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
 summary_time = config.get("summary_time", "09:00")
+strategy_name = config.get("strategy", "momentum")
+strategy = get_strategy(strategy_name)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -1104,7 +1109,7 @@ def signal_command(message):
         bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
         return
     try:
-        sigs = generate_signals(asset, bench)
+        sigs = strategy.generate_signals(asset, bench)
         last = sigs.iloc[-1]
         sig_text = translate(message.chat.id, f"signal_{last['Signal']}")
         bot.reply_to(

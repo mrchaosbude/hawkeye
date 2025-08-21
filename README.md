@@ -22,8 +22,20 @@ pip install requests telebot schedule matplotlib mplfinance
    Sektion `users` können Chat-IDs mit Rollen versehen werden, z. B.
    `"role": "admin"`, um globale Einstellungen ändern zu dürfen. Optional
    lässt sich mit `"max_symbols"` die maximale Anzahl an Symbolen pro Nutzer
-   festlegen (Standard 5). Der `/top10`-Befehl nutzt Daten von Coingecko.
-2. Starte den Bot anschließend mit:
+   festlegen (Standard 5). Über den Schlüssel `strategy` wählst du die zu
+   verwendende Handelsstrategie (aktuell nur `momentum`).
+2. Beispielkonfiguration:
+
+   ```json
+   {
+     "telegram_token": "DEIN_TELEGRAM_TOKEN",
+     "users": {"123456789": {"role": "admin"}},
+     "check_interval": 5,
+     "summary_time": "09:00",
+     "strategy": "momentum"
+   }
+   ```
+3. Starte den Bot anschließend mit:
 
 ```bash
 python hawkeye.py
@@ -49,7 +61,21 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 
 ## Beispiel: Trading-Signale
 
-Eine einfache Umsetzung eines regelbasierten Systems findet sich in `trading_strategy.py`. Das Skript berechnet technische Indikatoren, vergibt einen Score und erzeugt Kauf- bzw. Verkaufssignale auf Basis täglicher OHLCV-Daten.
+Die Logik für Handelssignale liegt im Paket `strategies`. Die Standard-
+Implementierung `MomentumStrategy` basiert auf Trends und Relativer Stärke.
+Sie lässt sich auch außerhalb des Bots verwenden:
+
+```python
+from strategies import get_strategy
+import pandas as pd
+
+asset = pd.read_csv("asset.csv", parse_dates=["Date"], index_col="Date")
+bench = pd.read_csv("benchmark.csv", parse_dates=["Date"], index_col="Date")
+
+strategy = get_strategy("momentum")
+signals = strategy.generate_signals(asset, bench)
+print(signals[["Score", "Signal"]].tail())
+```
 
 ## Hinweise
 
