@@ -23,8 +23,9 @@ pip install requests telebot schedule matplotlib mplfinance
    `"role": "admin"`, um globale Einstellungen ändern zu dürfen. Optional
    lässt sich mit `"max_symbols"` die maximale Anzahl an Symbolen pro Nutzer
    festlegen (Standard 5). Über den Schlüssel `strategy` wählst du die zu
-   verwendende Handelsstrategie (`momentum` oder `trend_following`).
-   Strategieabhängige Optionen kannst du in `strategy_params` angeben.
+   verwendende Handelsstrategie (`momentum`, `trend_following` oder
+   `arbitrage`). Strategieabhängige Optionen kannst du in
+   `strategy_params` angeben.
 2. Beispielkonfiguration:
 
    ```json
@@ -33,11 +34,10 @@ pip install requests telebot schedule matplotlib mplfinance
      "users": {"123456789": {"role": "admin"}},
      "check_interval": 5,
      "summary_time": "09:00",
-     "strategy": "trend_following",
+     "strategy": "arbitrage",
      "strategy_params": {
-       "short_window": 20,
-       "long_window": 50,
-       "donchian_window": 20
+       "symbol": "BTCUSDT",
+       "threshold": 0.01
      }
    }
    ```
@@ -84,10 +84,29 @@ signals = strategy.generate_signals(asset, bench)
 print(signals[["Signal"]].tail())
 ```
 
+### Arbitrage-Strategie
+
+Für eine einfache Arbitrage zwischen Binance und Coinbase kannst du die
+Strategie wie folgt konfigurieren:
+
+```json
+{
+  "strategy": "arbitrage",
+  "strategy_params": {"symbol": "BTCUSDT", "threshold": 0.01}
+}
+```
+
+Die Preise beider Börsen werden verglichen. Überschreitet der Spread den
+Schwellenwert, wird ein Kauf-/Verkaufs-Signal ausgegeben.
+
 ## Hinweise
 
 - Die Preise werden standardmäßig alle 5 Minuten geprüft. Über `/interval` (nur Admin) lässt sich dieser Wert anpassen.
 - Der Bot aktualisiert sich selbst, wenn neue Commits im Git-Repository vorhanden sind.
+- Für echte Trades auf den Börsen sind API-Schlüssel erforderlich. Die
+  Beispiel-Implementierung nutzt nur öffentliche Preisdaten.
+- Arbitrage birgt Risiken durch Gebühren, Latenzen und Slippage; ein
+  positiver Spread garantiert keinen Gewinn.
 
 ## Lizenz
 

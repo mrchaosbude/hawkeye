@@ -3,10 +3,12 @@
 from .base import Strategy
 from .momentum import MomentumStrategy
 from .trend_following import TrendFollowingStrategy
+from .arbitrage import ArbitrageStrategy
 
 STRATEGY_CLASSES = {
     "momentum": MomentumStrategy,
     "trend_following": TrendFollowingStrategy,
+    "arbitrage": ArbitrageStrategy,
 }
 
 
@@ -22,6 +24,7 @@ __all__ = [
     "Strategy",
     "MomentumStrategy",
     "TrendFollowingStrategy",
+    "ArbitrageStrategy",
     "get_strategy",
     "STRATEGY_CLASSES",
 ]
