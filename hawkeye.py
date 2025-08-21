@@ -435,11 +435,27 @@ def generate_top10_chart(coins):
         return None
 
 
-def generate_binance_candlestick(symbol):
+BINANCE_PAIR_EXCEPTIONS = {
+    # Stablecoins
+    "USDT": None,
+    "BUSD": "BUSDUSDT",
+    "USDC": "USDCUSDT",
+    "DAI": "DAIUSDT",
+    # Assets without USDT pairs
+    "WBTC": None,
+}
+
+
+def to_binance_pair(symbol: str):
+    symbol = symbol.upper()
+    return BINANCE_PAIR_EXCEPTIONS.get(symbol, f"{symbol}USDT")
+
+
+def generate_binance_candlestick(pair):
     try:
         r = requests.get(
             "https://api.binance.com/api/v3/klines",
-            params={"symbol": symbol, "interval": "1h", "limit": 24},
+            params={"symbol": pair, "interval": "1h", "limit": 24},
             timeout=10,
         )
         r.raise_for_status()
@@ -461,7 +477,7 @@ def generate_binance_candlestick(symbol):
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
         ax.set_xlabel("Time (UTC)")
         ax.set_ylabel("Price")
-        ax.set_title(symbol)
+        ax.set_title(pair)
         fig.tight_layout()
         buf = io.BytesIO()
         fig.savefig(buf, format="png")
@@ -469,11 +485,11 @@ def generate_binance_candlestick(symbol):
         buf.seek(0)
         return buf
     except requests.Timeout:
-        logger.error("generate_binance_candlestick timeout for %s", symbol)
+        logger.error("generate_binance_candlestick timeout for %s", pair)
         return None
     except (requests.RequestException, ValueError) as e:
         logger.error(
-            "generate_binance_candlestick error for %s: %s", symbol, e
+            "generate_binance_candlestick error for %s: %s", pair, e
         )
         return None
 
@@ -1071,7 +1087,11 @@ def show_top10(message):
         )
         chart = generate_cached_candle_chart(symbol)
         if not chart:
-            chart = generate_binance_candlestick(symbol)
+            pair = to_binance_pair(symbol)
+            if pair:
+                chart = generate_binance_candlestick(pair)
+            else:
+                logger.info("No Binance pair for %s", symbol)
         if chart:
             bot.send_photo(message.chat.id, chart, caption=caption)
         else:
@@ -1087,7 +1107,14 @@ def show_history(message):
         bot.reply_to(message, translate(message.chat.id, "usage_history"))
         return
     symbol = parts[0].upper()
-    chart = generate_binance_candlestick(symbol)
+    pair = to_binance_pair(symbol)
+    if not pair:
+        logger.info("No Binance pair for %s", symbol)
+        bot.reply_to(
+            message, translate(message.chat.id, "history_error", symbol=symbol)
+        )
+        return
+    chart = generate_binance_candlestick(pair)
     if chart:
         bot.send_photo(message.chat.id, chart, caption=symbol)
     else:
