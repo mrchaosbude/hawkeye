@@ -8,10 +8,9 @@
   },
   "check_interval": 5,
   "summary_time": "09:00",
-  "strategy": "trend_following",
+  "strategy": "arbitrage",
   "strategy_params": {
-    "short_window": 20,
-    "long_window": 50,
-    "donchian_window": 20
+    "symbol": "BTCUSDT",
+    "threshold": 0.01
   }
 }
