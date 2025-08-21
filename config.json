@@ -2,7 +2,8 @@
   "telegram_token": "DEIN_TELEGRAM_TOKEN",
   "users": {
     "123456789": {
-      "role": "admin"
+      "role": "admin",
+      "max_symbols": 5
     }
   },
   "check_interval": 5,

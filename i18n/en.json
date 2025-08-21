@@ -15,6 +15,7 @@
   "usage_remove": "⚠ Usage: /remove SYMBOL",
   "symbol_removed": "✅ {symbol} removed.",
   "symbol_not_found": "⚠ {symbol} not found.",
+  "max_symbols_reached": "⚠ Maximum number of symbols reached ({max_symbols}). Remove one before adding another.",
   "usage_interval": "⚠ Usage: /interval MINUTES",
   "interval_positive": "⚠ Interval must be a positive integer.",
   "interval_set": "⏱ Check interval set to {minutes} minutes.",
