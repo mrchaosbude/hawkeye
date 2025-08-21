@@ -8,6 +8,7 @@ import threading
 import subprocess
 import sys
 import io
+import sqlite3
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mplfinance.original_flavor import candlestick_ohlc
@@ -17,6 +18,7 @@ from datetime import datetime
 BINANCE_PRICE_URL = "https://fapi.binance.com/fapi/v1/premiumIndex"
 CONFIG_FILE = "config.json"
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
+DB_FILE = "cache.db"
 
 
 def load_config():
@@ -45,12 +47,44 @@ def save_config():
         )
 
 
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS top10 (
+            symbol TEXT PRIMARY KEY,
+            id TEXT,
+            name TEXT,
+            cached_at INTEGER
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS candles (
+            symbol TEXT,
+            timestamp INTEGER,
+            open REAL,
+            high REAL,
+            low REAL,
+            close REAL,
+            PRIMARY KEY(symbol, timestamp)
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
 config = load_config()
 TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
+
+init_db()
 
 
 def get_user(chat_id):
@@ -326,6 +360,126 @@ def generate_binance_candlestick(symbol):
         print(f"[DEBUG] generate_binance_candlestick error for {symbol}: {e}")
         return None
 
+
+def cache_top10_candles():
+    print("[DEBUG] cache_top10_candles start")
+    coins = get_top10_coingecko()
+    if not coins:
+        print("[DEBUG] cache_top10_candles: no coins returned")
+        return
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("DELETE FROM top10")
+    cur.execute("DELETE FROM candles")
+    now = int(time.time())
+    for coin in coins:
+        symbol = coin.get("symbol", "").upper()
+        coin_id = coin.get("id")
+        name = coin.get("name")
+        cur.execute(
+            "INSERT OR REPLACE INTO top10(symbol, id, name, cached_at) VALUES (?, ?, ?, ?)",
+            (symbol, coin_id, name, now),
+        )
+        try:
+            r = requests.get(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                params={"vs_currency": "usd", "days": 7},
+                timeout=10,
+            )
+            r.raise_for_status()
+            raw = r.json()
+            for t, o, h, l, c in raw:
+                cur.execute(
+                    "INSERT OR REPLACE INTO candles(symbol, timestamp, open, high, low, close) VALUES (?, ?, ?, ?, ?, ?)",
+                    (symbol, int(t / 1000), o, h, l, c),
+                )
+            time.sleep(1)
+        except Exception as e:
+            print(f"[DEBUG] cache_top10_candles OHLC error for {symbol}: {e}")
+    conn.commit()
+    conn.close()
+
+
+def load_cached_top10():
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute("SELECT symbol, id, name FROM top10 ORDER BY rowid")
+    rows = cur.fetchall()
+    conn.close()
+    return [{"symbol": sym, "id": cid, "name": name} for sym, cid, name in rows]
+
+
+def get_cached_ohlc(symbol):
+    conn = sqlite3.connect(DB_FILE)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT timestamp, open, high, low, close FROM candles WHERE symbol=? ORDER BY timestamp",
+        (symbol,),
+    )
+    rows = cur.fetchall()
+    conn.close()
+    ohlc = []
+    for ts, o, h, l, c in rows:
+        ohlc.append([mdates.date2num(datetime.utcfromtimestamp(ts)), o, h, l, c])
+    return ohlc
+
+
+def generate_top10_chart_cached(coins):
+    try:
+        fig, axes = plt.subplots(5, 2, figsize=(10, 12))
+        axes = axes.flatten()
+        for ax, coin in zip(axes, coins):
+            symbol = coin.get("symbol", "").upper()
+            ohlc_data = get_cached_ohlc(symbol)
+            if ohlc_data:
+                candlestick_ohlc(
+                    ax,
+                    ohlc_data,
+                    colorup="green",
+                    colordown="red",
+                    width=0.6 / 24,
+                )
+                ax.xaxis.set_major_formatter(mdates.DateFormatter("%m-%d"))
+                ax.set_xticks([])
+                ax.set_yticks([])
+            else:
+                ax.text(0.5, 0.5, "Keine Daten", ha="center", va="center")
+            ax.set_title(symbol)
+        for ax in axes[len(coins):]:
+            ax.axis("off")
+        fig.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png")
+        plt.close(fig)
+        buf.seek(0)
+        return buf
+    except Exception as e:
+        print(f"[DEBUG] generate_top10_chart_cached error: {e}")
+        return None
+
+
+def fetch_live_prices(coins):
+    ids = ",".join([coin["id"] for coin in coins])
+    try:
+        r = requests.get(
+            COINGECKO_MARKETS_URL,
+            params={"vs_currency": "usd", "ids": ids},
+            timeout=10,
+        )
+        r.raise_for_status()
+        data = r.json()
+        lookup = {item["symbol"].upper(): item for item in data}
+        for coin in coins:
+            sym = coin["symbol"].upper()
+            info = lookup.get(sym)
+            if info:
+                coin["current_price"] = info.get("current_price")
+                coin["price_change_percentage_24h"] = info.get(
+                    "price_change_percentage_24h"
+                ) or info.get("price_change_percentage_24h_in_currency")
+    except Exception as e:
+        print(f"[DEBUG] fetch_live_prices error: {e}")
+
 # === FUNKTIONEN: Checks ===
 def check_price():
     for cid, cfg in users.items():
@@ -495,40 +649,29 @@ def show_current_prices(message):
 
 @bot.message_handler(commands=["top10"])
 def show_top10(message):
-    coins, source = get_top10_cryptos()
+    coins = load_cached_top10()
     if not coins:
-        print("[DEBUG] show_top10: get_top10_cryptos returned no data")
+        cache_top10_candles()
+        coins = load_cached_top10()
+    if not coins:
         bot.reply_to(message, "⚠ Top 10 konnten nicht geladen werden.")
         return
+    fetch_live_prices(coins)
     lines = ["🏆 Top 10 Kryptowährungen:"]
     for i, coin in enumerate(coins, start=1):
         price = coin.get("current_price")
         change = coin.get("price_change_percentage_24h")
-        if change is None:
-            change = coin.get("price_change_percentage_24h_in_currency")
-
         price_str = f"{price:.2f}" if isinstance(price, (int, float)) else "N/A"
-        change_str = (
-            f"{change:+.2f}%" if isinstance(change, (int, float)) else "N/A"
-        )
-
+        change_str = f"{change:+.2f}%" if isinstance(change, (int, float)) else "N/A"
         lines.append(
             f"{i}. {coin.get('name')} ({coin.get('symbol', '').upper()}): {price_str} USD ({change_str})"
         )
     text = "\n".join(lines)
-    if source == "coingecko":
-        chart = generate_top10_chart(coins)
-        if chart:
-            bot.send_photo(message.chat.id, chart, caption=text)
-        else:
-            print("[DEBUG] show_top10: generate_top10_chart returned no chart")
-            bot.reply_to(message, text)
+    chart = generate_top10_chart_cached(coins)
+    if chart:
+        bot.send_photo(message.chat.id, chart, caption=text)
     else:
         bot.reply_to(message, text)
-        for sym in [c.get("symbol") for c in coins[:3]]:
-            chart = generate_binance_candlestick(sym)
-            if chart:
-                bot.send_photo(message.chat.id, chart)
 
 
 @bot.message_handler(commands=["menu", "help"])
@@ -583,6 +726,7 @@ def schedule_jobs():
     schedule.clear()
     schedule.every(check_interval).minutes.do(check_price)
     schedule.every(check_interval).minutes.do(check_updates)
+    schedule.every().day.do(cache_top10_candles)
 
 
 schedule_jobs()
