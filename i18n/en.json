@@ -36,10 +36,10 @@
   "menu_stop": "/stop - disable notifications",
   "menu_start": "/start - enable notifications",
   "menu_menu": "/menu - show this menu",
-  "menu_interval": "/interval MINUTES - set check interval",
-  "menu_summarytime": "/summarytime HH:MM - set daily summary time",
+  "menu_interval": "/interval MINUTES - set check interval (admin only)",
+  "menu_summarytime": "/summarytime HH:MM - set daily summary time (admin only)",
   "menu_now": "/now - show current prices",
-  "menu_summary": "/summary - send daily summary now",
+  "menu_summary": "/summary - send daily summary now (admin only)",
   "menu_history": "/history SYMBOL - show price history chart",
   "menu_top10": "/top10 - show top 10 cryptocurrencies",
   "menu_signal": "/signal SYMBOL [BENCHMARK] - score and signal vs. BENCHMARK",
@@ -72,5 +72,6 @@
   "signal_result": "📈 {symbol}: score {score}, signal {signal}",
   "signal_buy": "buy",
   "signal_sell": "sell",
-  "signal_hold": "hold"
+  "signal_hold": "hold",
+  "admin_only": "⚠ Admins only."
 }

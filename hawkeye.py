@@ -125,6 +125,7 @@ def get_user(chat_id):
             "symbols": {},
             "notifications": True,
             "language": "de",
+            "role": "user",
         }
         save_config()
     # Sicherstellen, dass ältere Konfigurationen migriert werden
@@ -141,7 +142,13 @@ def get_user(chat_id):
     for sym_cfg in users[cid].get("symbols", {}).values():
         sym_cfg.setdefault("trailing_percent", None)
     users[cid].setdefault("language", "de")
+    users[cid].setdefault("role", "user")
     return users[cid]
+
+
+def is_admin(chat_id):
+    """Check if the user has admin role."""
+    return get_user(chat_id).get("role") == "admin"
 
 
 def translate(chat_id, key, **kwargs):
@@ -923,6 +930,9 @@ def remove_symbol(message):
 
 @bot.message_handler(commands=["interval"])
 def set_interval_command(message):
+    if not is_admin(message.chat.id):
+        bot.reply_to(message, translate(message.chat.id, "admin_only"))
+        return
     parts = message.text.split()[1:]
     if len(parts) != 1:
         bot.reply_to(message, translate(message.chat.id, "usage_interval"))
@@ -945,6 +955,9 @@ def set_interval_command(message):
 
 @bot.message_handler(commands=["summarytime"])
 def set_summary_time_command(message):
+    if not is_admin(message.chat.id):
+        bot.reply_to(message, translate(message.chat.id, "admin_only"))
+        return
     parts = message.text.split()[1:]
     if len(parts) != 1:
         bot.reply_to(message, translate(message.chat.id, "usage_summarytime"))
@@ -983,6 +996,9 @@ def show_current_prices(message):
 
 @bot.message_handler(commands=["summary"])
 def summary_command(message):
+    if not is_admin(message.chat.id):
+        bot.reply_to(message, translate(message.chat.id, "admin_only"))
+        return
     send_daily_summary(message.chat.id)
 
 
