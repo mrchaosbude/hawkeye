@@ -121,11 +121,16 @@ def get_user(chat_id):
 # === FUNKTIONEN ===
 def get_price(sym):
     try:
-        r = requests.get(BINANCE_PRICE_URL, params={"symbol": sym})
+        r = requests.get(
+            BINANCE_PRICE_URL, params={"symbol": sym}, timeout=10
+        )
         r.raise_for_status()
         price = float(r.json()["markPrice"])
         logger.debug("get_price %s -> %s", sym, price)
         return price
+    except requests.Timeout:
+        logger.error("get_price timeout for %s", sym)
+        return None
     except (requests.RequestException, ValueError, KeyError) as e:
         logger.error("get_price error for %s: %s", sym, e)
         return None
@@ -136,7 +141,9 @@ def generate_buy_sell_chart(sym):
     try:
         # Orderbuch-Daten abrufen (20 Level)
         r = requests.get(
-            "https://fapi.binance.com/fapi/v1/depth", params={"symbol": sym, "limit": 20}
+            "https://fapi.binance.com/fapi/v1/depth",
+            params={"symbol": sym, "limit": 20},
+            timeout=10,
         )
         r.raise_for_status()
         data = r.json()
@@ -173,6 +180,9 @@ def generate_buy_sell_chart(sym):
         plt.close(fig)
         buf.seek(0)
         return buf
+    except requests.Timeout:
+        logger.error("generate_buy_sell_chart timeout for %s", sym)
+        return None
     except (requests.RequestException, ValueError) as e:
         logger.error("generate_buy_sell_chart error for %s: %s", sym, e)
         return None
@@ -200,6 +210,9 @@ def get_top10_coingecko():
                     coin["price_change_percentage_24h"] = pct
         logger.debug("get_top10_coingecko returned %d coins", len(data))
         return data
+    except requests.Timeout:
+        logger.error("get_top10_coingecko timeout")
+        return []
     except (requests.RequestException, ValueError) as e:
         logger.error("get_top10_coingecko error: %s", e)
         return []
@@ -229,6 +242,9 @@ def get_top10_binance():
             )
         logger.debug("get_top10_binance returned %d coins", len(coins))
         return coins
+    except requests.Timeout:
+        logger.error("get_top10_binance timeout")
+        return []
     except (requests.RequestException, ValueError) as e:
         logger.error("get_top10_binance error: %s", e)
         return []
@@ -291,6 +307,26 @@ def generate_top10_chart(coins):
                         )
                     time.sleep(1)
                     break
+                except requests.Timeout:
+                    logger.error(
+                        "Coingecko OHLC timeout for %s (attempt %d)",
+                        symbol,
+                        attempt,
+                    )
+                    if attempt == max_attempts:
+                        ohlc_data = []
+                        logger.debug(
+                            "Failed to fetch OHLC for %s after %d attempts",
+                            symbol,
+                            max_attempts,
+                        )
+                    else:
+                        wait = backoff
+                        logger.debug(
+                            "Retrying %s in %s s after timeout", symbol, wait
+                        )
+                        time.sleep(wait)
+                        backoff *= 2
                 except (requests.RequestException, ValueError) as e:
                     logger.error(
                         "Coingecko OHLC error for %s: %s (attempt %d)",
@@ -375,6 +411,9 @@ def generate_binance_candlestick(symbol):
         plt.close(fig)
         buf.seek(0)
         return buf
+    except requests.Timeout:
+        logger.error("generate_binance_candlestick timeout for %s", symbol)
+        return None
     except (requests.RequestException, ValueError) as e:
         logger.error(
             "generate_binance_candlestick error for %s: %s", symbol, e
@@ -415,6 +454,10 @@ def cache_top10_candles():
                         (symbol, int(t / 1000), o, h, l, c),
                     )
                 time.sleep(1)
+            except requests.Timeout:
+                logger.error(
+                    "cache_top10_candles OHLC timeout for %s", symbol
+                )
             except (requests.RequestException, sqlite3.Error, ValueError) as e:
                 logger.error(
                     "cache_top10_candles OHLC error for %s: %s", symbol, e
@@ -519,6 +562,8 @@ def fetch_live_prices(coins):
                 coin["price_change_percentage_24h"] = info.get(
                     "price_change_percentage_24h"
                 ) or info.get("price_change_percentage_24h_in_currency")
+    except requests.Timeout:
+        logger.error("fetch_live_prices timeout")
     except (requests.RequestException, ValueError) as e:
         logger.error("fetch_live_prices error: %s", e)
 
