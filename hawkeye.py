@@ -37,6 +37,7 @@ def load_config():
             "telegram_token": "",
             "users": {},
             "check_interval": 5,
+            "summary_time": "09:00",
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -49,6 +50,7 @@ def save_config():
         "telegram_token": TELEGRAM_TOKEN,
         "users": users,
         "check_interval": check_interval,
+        "summary_time": summary_time,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -92,6 +94,7 @@ config = load_config()
 TELEGRAM_TOKEN = config.get("telegram_token", "")
 users = config.get("users", {})  # chat_id -> user data
 check_interval = config.get("check_interval", 5)
+summary_time = config.get("summary_time", "09:00")
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -729,6 +732,31 @@ def check_updates():
                 logger.exception("Fehler beim Senden der Update-Fehlermeldung")
 
 
+def send_daily_summary(chat_id=None):
+    cids = [str(chat_id)] if chat_id is not None else list(users.keys())
+    for cid in cids:
+        cfg = get_user(cid)
+        symbols = cfg.get("symbols", {})
+        if not symbols:
+            continue
+        lines = [translate(cid, "daily_summary_header")]
+        for sym in symbols:
+            try:
+                r = requests.get(
+                    "https://fapi.binance.com/fapi/v1/ticker/24hr",
+                    params={"symbol": sym},
+                    timeout=10,
+                )
+                r.raise_for_status()
+                data = r.json()
+                price = float(data.get("lastPrice"))
+                change = float(data.get("priceChangePercent"))
+                lines.append(f"{sym}: {price:.2f} ({change:+.2f}%)")
+            except (requests.RequestException, ValueError):
+                lines.append(translate(cid, "price_not_available", symbol=sym))
+        bot.send_message(cid, "\n".join(lines))
+
+
 # === TELEGRAM COMMANDS ===
 @bot.message_handler(commands=["set"])
 def set_config(message):
@@ -888,6 +916,25 @@ def set_interval_command(message):
     )
 
 
+@bot.message_handler(commands=["summarytime"])
+def set_summary_time_command(message):
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, translate(message.chat.id, "usage_summarytime"))
+        return
+    time_str = parts[0]
+    try:
+        datetime.strptime(time_str, "%H:%M")
+    except ValueError:
+        bot.reply_to(message, translate(message.chat.id, "usage_summarytime"))
+        return
+    global summary_time
+    summary_time = time_str
+    save_config()
+    schedule_jobs()
+    bot.reply_to(message, translate(message.chat.id, "summary_time_set", time=time_str))
+
+
 @bot.message_handler(commands=["now"])
 def show_current_prices(message):
     cfg = get_user(message.chat.id)
@@ -905,6 +952,11 @@ def show_current_prices(message):
         else:
             lines.append(f"{sym}: {price}")
     bot.reply_to(message, "\n".join(lines))
+
+
+@bot.message_handler(commands=["summary"])
+def summary_command(message):
+    send_daily_summary(message.chat.id)
 
 
 @bot.message_handler(commands=["top10"])
@@ -1038,6 +1090,8 @@ def schedule_jobs():
     schedule.every(check_interval).minutes.do(check_price)
     schedule.every(check_interval).minutes.do(check_updates)
     schedule.every().day.do(cache_top10_candles)
+    if summary_time:
+        schedule.every().day.at(summary_time).do(send_daily_summary)
 
 
 schedule_jobs()
