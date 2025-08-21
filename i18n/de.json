@@ -36,10 +36,10 @@
   "menu_stop": "/stop - Benachrichtigungen deaktivieren",
   "menu_start": "/start - Benachrichtigungen aktivieren",
   "menu_menu": "/menu - Dieses Menü anzeigen",
-  "menu_interval": "/interval MINUTEN - Prüfintervall setzen",
-  "menu_summarytime": "/summarytime HH:MM - Zeitpunkt der Tageszusammenfassung setzen",
+  "menu_interval": "/interval MINUTEN - Prüfintervall setzen (nur Admin)",
+  "menu_summarytime": "/summarytime HH:MM - Zeitpunkt der Tageszusammenfassung setzen (nur Admin)",
   "menu_now": "/now - Aktuelle Preise anzeigen",
-  "menu_summary": "/summary - Tageszusammenfassung jetzt senden",
+  "menu_summary": "/summary - Tageszusammenfassung jetzt senden (nur Admin)",
   "menu_history": "/history SYMBOL - Preisverlauf als Chart",
   "menu_top10": "/top10 - Top 10 Kryptowährungen anzeigen",
   "menu_signal": "/signal SYMBOL [BENCHMARK] - Score & Signal relativ zu BENCHMARK",
@@ -72,5 +72,6 @@
   "signal_result": "📈 {symbol}: Score {score}, Signal {signal}",
   "signal_buy": "kaufen",
   "signal_sell": "verkaufen",
-  "signal_hold": "halten"
+  "signal_hold": "halten",
+  "admin_only": "⚠ Nur Admins dürfen diesen Befehl verwenden."
 }

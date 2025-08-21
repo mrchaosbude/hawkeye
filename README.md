@@ -18,8 +18,10 @@ pip install requests telebot schedule matplotlib mplfinance
 
 ## Konfiguration
 
-1. Kopiere die Datei `config.json` und trage deinen Bot-Token ein. Der `/top10`-Befehl nutzt
-   Daten von Coingecko.
+1. Kopiere die Datei `config.json` und trage deinen Bot-Token ein. In der
+   Sektion `users` können Chat-IDs mit Rollen versehen werden, z. B.
+   `"role": "admin"`, um globale Einstellungen ändern zu dürfen. Der
+   `/top10`-Befehl nutzt Daten von Coingecko.
 2. Starte den Bot anschließend mit:
 
 ```bash
@@ -36,8 +38,10 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/stop` – Benachrichtigungen deaktivieren
 - `/start` – Benachrichtigungen aktivieren
 - `/menu` oder `/help` – Hilfe und aktuelle Einstellungen anzeigen
-- `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen
+- `/interval MINUTEN` – Zeitabstand zwischen den Prüfungen festlegen (nur Admin)
+- `/summarytime HH:MM` – Zeitpunkt der Tageszusammenfassung setzen (nur Admin)
 - `/now` – Aktuelle Preise der beobachteten Symbole anzeigen
+- `/summary` – Tageszusammenfassung jetzt senden (nur Admin)
 - `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
   (Candlestick-Daten werden täglich in `cache.db` gespeichert; aktuelle Preise werden live geladen)
 - `/signal SYMBOL BENCHMARK` – Berechnet Score und Signal für `SYMBOL` relativ zur `BENCHMARK`
@@ -48,7 +52,7 @@ Eine einfache Umsetzung eines regelbasierten Systems findet sich in `trading_str
 
 ## Hinweise
 
-- Die Preise werden standardmäßig alle 5 Minuten geprüft. Über `/interval` lässt sich dieser Wert anpassen.
+- Die Preise werden standardmäßig alle 5 Minuten geprüft. Über `/interval` (nur Admin) lässt sich dieser Wert anpassen.
 - Der Bot aktualisiert sich selbst, wenn neue Commits im Git-Repository vorhanden sind.
 
 ## Lizenz
