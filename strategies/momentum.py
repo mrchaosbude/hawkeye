@@ -71,7 +71,27 @@ def relative_strength(asset: pd.Series, benchmark: pd.Series) -> pd.Series:
     )
 
 
-def compute_features(df: pd.DataFrame, benchmark: pd.DataFrame) -> pd.DataFrame:
+def compute_features(
+    df: pd.DataFrame, benchmark: pd.DataFrame, stress_threshold: float = 0.08
+) -> pd.DataFrame:
+    """Compute technical features used by the strategy.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Asset OHLCV data.
+    benchmark : pd.DataFrame
+        Benchmark OHLCV data used to determine market regime.
+    stress_threshold : float, optional
+        Maximum acceptable ``ATR_ratio`` (as a decimal) before the market is
+        considered stressed.  Default is ``0.08`` (8%).
+
+    Returns
+    -------
+    pd.DataFrame
+        Feature-enriched DataFrame including the regime flag.
+    """
+
     df = df.copy()
     bench = benchmark["Close"].reindex(df.index).ffill()
 
@@ -97,7 +117,7 @@ def compute_features(df: pd.DataFrame, benchmark: pd.DataFrame) -> pd.DataFrame:
     df["Rel_Strength"] = relative_strength(df["Close"], bench)
 
     bench_ema200 = ema(bench, 200)
-    df["Regime"] = bench > bench_ema200
+    df["Regime"] = (bench > bench_ema200) & (df["ATR_ratio"] < stress_threshold)
 
     return df
 
@@ -132,9 +152,25 @@ class MomentumStrategy(Strategy):
         self.weights = weights or Scores()
 
     def generate_signals(
-        self, df: pd.DataFrame, benchmark: pd.DataFrame
+        self,
+        df: pd.DataFrame,
+        benchmark: pd.DataFrame,
+        stress_threshold: float = 0.08,
     ) -> pd.DataFrame:
-        features = compute_features(df, benchmark)
+        """Generate momentum-based trading signals.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Asset OHLCV data.
+        benchmark : pd.DataFrame
+            Benchmark data.
+        stress_threshold : float, optional
+            Maximum ``ATR_ratio`` before the regime is considered stressed.
+            Defaults to ``0.08`` (8%).
+        """
+
+        features = compute_features(df, benchmark, stress_threshold)
         features["Score"] = features.apply(
             compute_score, axis=1, weights=self.weights
         )
