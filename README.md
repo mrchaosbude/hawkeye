@@ -79,8 +79,8 @@ import pandas as pd
 asset = pd.read_csv("asset.csv", parse_dates=["Date"], index_col="Date")
 bench = pd.read_csv("benchmark.csv", parse_dates=["Date"], index_col="Date")
 
-strategy = get_strategy("trend_following", short_window=20, long_window=50)
-signals = strategy.generate_signals(asset, bench)
+strategy = get_strategy("momentum")
+signals = strategy.generate_signals(asset, bench, stress_threshold=0.08)
 print(signals[["Signal"]].tail())
 ```
 
