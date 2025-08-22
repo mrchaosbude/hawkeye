@@ -53,8 +53,8 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 
 - `/set SYMBOL STOP_LOSS TAKE_PROFIT` – Symbol hinzufügen oder aktualisieren, z. B. `/set BTCUSDT 42000 46000`
 - `/watch SYMBOL` – Symbol für automatische Signaländerungen beobachten
-- `/autotrade SYMBOL BETRAG|PROZENT%` – Automatischer Handel für SYMBOL mit fixem Betrag oder Prozent des Guthabens
-- `/autotradesim START SYMBOL BETRAG|PROZENT%` – Simulation des automatischen Handels mit Startguthaben
+- `/autotrade <SYMBOL> <AMOUNT|PERCENT%>` – Automatischer Handel für SYMBOL mit fixem Betrag oder Prozent des Guthabens
+- `/autotradesim <START_BALANCE> <SYMBOL> <AMOUNT|PERCENT%>` – Simulation des automatischen Handels mit Startguthaben
 - `/remove SYMBOL` – Symbol entfernen
 - `/percent SYMBOL PROZENT` – Benachrichtigung bei ±PROZENT Preisänderung
 - `/stop` – Benachrichtigungen deaktivieren
