@@ -12,5 +12,6 @@
   "strategy_params": {
     "symbol": "BTCUSDT",
     "threshold": 0.01
-  }
+  },
+  "data_source": "binance"
 }
