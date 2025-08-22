@@ -3,6 +3,13 @@ import json
 import requests
 import telebot
 from telebot.apihelper import ApiException
+try:
+    from telebot.types import BotCommand
+except Exception:  # pragma: no cover - fallback for stubbed telebot
+    class BotCommand:  # minimal stub
+        def __init__(self, command, description):
+            self.command = command
+            self.description = description
 import schedule
 import time
 import threading
@@ -151,6 +158,36 @@ def load_translations():
 
 
 load_translations()
+
+
+def set_bot_commands():
+    if not hasattr(bot, "set_my_commands"):
+        return
+    commands_by_lang = {}
+    for lang, trans in translations.items():
+        cmds = []
+        for key, value in trans.items():
+            if key.startswith("menu_") and key not in ("menu_header", "menu_config_header"):
+                text = value.lstrip("/")
+                parts = text.split(" - ", 1)
+                if len(parts) < 2:
+                    continue
+                command_part, description = parts
+                command = command_part.split()[0]
+                cmds.append(BotCommand(command, description))
+        if cmds:
+            commands_by_lang[lang] = cmds
+    if not commands_by_lang:
+        return
+    default_cmds = commands_by_lang.get("en") or next(iter(commands_by_lang.values()))
+    bot.set_my_commands(default_cmds)
+    for lang, cmds in commands_by_lang.items():
+        if lang == "en" and cmds is default_cmds:
+            continue
+        bot.set_my_commands(cmds, language_code=lang)
+
+
+set_bot_commands()
 
 
 def get_user(chat_id):
