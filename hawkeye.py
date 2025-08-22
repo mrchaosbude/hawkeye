@@ -27,6 +27,7 @@ import pandas as pd
 from strategies import get_strategy
 from binance_client import BinanceClient
 from autotrade_simulation import simulate_autotrade
+from backtest import run_backtest
 
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -1437,6 +1438,23 @@ def show_history(message):
             message, translate(message.chat.id, "history_error", symbol=symbol)
         )
 
+
+@bot.message_handler(commands=["backtest"])
+def backtest_command(message):
+    parts = message.text.split()[1:]
+    if len(parts) != 3:
+        bot.reply_to(message, "Usage: /backtest SYMBOL START END")
+        return
+    symbol, start, end = parts[0].upper(), parts[1], parts[2]
+    try:
+        roi, drawdown = run_backtest(symbol, start, end)
+        bot.reply_to(
+            message,
+            f"{symbol}: ROI {roi:.2%}, Max Drawdown {drawdown:.2%}",
+        )
+    except Exception as e:  # pragma: no cover - broad exception for user input
+        logger.error("backtest command error for %s: %s", symbol, e)
+        bot.reply_to(message, f"Backtest failed for {symbol}")
 
 @bot.message_handler(commands=["signal"])
 def signal_command(message):
