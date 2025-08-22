@@ -1506,75 +1506,57 @@ def signal_command(message):
         bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
 
 
+MENU_SECTIONS = {
+    "symbol": ("menu_section_symbol", ["menu_set", "menu_remove", "menu_percent", "menu_trail", "menu_watch"]),
+    "trading": ("menu_section_trading", ["menu_signal", "menu_autotrade", "menu_autotradesim", "menu_history", "menu_top10"]),
+    "system": ("menu_section_system", ["menu_stop", "menu_start", "menu_menu", "menu_interval", "menu_summarytime", "menu_now", "menu_summary", "menu_language"]),
+}
+
 @bot.message_handler(commands=["menu", "help"])
 def show_menu(message):
+    parts = message.text.split()[1:]
+    section = parts[0].lower() if parts else None
+    if section and section not in MENU_SECTIONS:
+        bot.reply_to(message, translate(message.chat.id, "menu_section_invalid", section=section))
+        return
     cfg = get_user(message.chat.id)
     status = (
         translate(message.chat.id, "notifications_on")
         if cfg.get("notifications", True)
         else translate(message.chat.id, "notifications_off")
     )
-    lines = [
-        translate(message.chat.id, "menu_header"),
-        translate(message.chat.id, "menu_set"),
-        translate(message.chat.id, "menu_remove"),
-        translate(message.chat.id, "menu_percent"),
-        translate(message.chat.id, "menu_trail"),
-        translate(message.chat.id, "menu_stop"),
-        translate(message.chat.id, "menu_start"),
-        translate(message.chat.id, "menu_menu"),
-        translate(message.chat.id, "menu_interval"),
-        translate(message.chat.id, "menu_summarytime"),
-        translate(message.chat.id, "menu_now"),
-        translate(message.chat.id, "menu_summary"),
-        translate(message.chat.id, "menu_history"),
-        translate(message.chat.id, "menu_top10"),
-        translate(message.chat.id, "menu_signal"),
-        translate(message.chat.id, "menu_autotrade"),
-        translate(message.chat.id, "menu_autotradesim"),
-        translate(message.chat.id, "menu_watch"),
-        translate(message.chat.id, "menu_language"),
-        "",
-        translate(message.chat.id, "menu_config_header"),
-    ]
-    for sym, data in cfg.get("symbols", {}).items():
-        sl = data.get("stop_loss", "-")
-        tp = data.get("take_profit", "-")
-        line = translate(
-            message.chat.id,
-            "symbol_config",
-            symbol=sym,
-            sl=sl,
-            tp=tp,
-        )
-        if "percent" in data:
-            line += translate(
-                message.chat.id,
-                "symbol_config_percent",
-                percent=data["percent"],
-                base=data.get("base_price"),
-            )
-        amt = data.get("trade_amount", 0.0)
-        pct = data.get("trade_percent")
-        if amt > 0:
-            line += translate(
-                message.chat.id, "symbol_config_trade_amount", amount=amt
-            )
-        if pct:
-            line += translate(
-                message.chat.id, "symbol_config_trade_percent", percent=pct
-            )
-        qty = data.get("quantity", 0.0)
-        if qty > 0:
-            line += translate(message.chat.id, "symbol_config_quantity", qty=qty)
-        lines.append(line)
+    lines = [translate(message.chat.id, "menu_header")]
+    for key, (title_key, cmd_keys) in MENU_SECTIONS.items():
+        if section and key != section:
+            continue
+        lines.append(translate(message.chat.id, title_key))
+        for cmd in cmd_keys:
+            lines.append(translate(message.chat.id, cmd))
+        lines.append("")
+    if lines and lines[-1] == "":
+        lines.pop()
+    if not section or section == "symbol":
+        lines.append("")
+        lines.append(translate(message.chat.id, "menu_config_header"))
+        for sym, data in cfg.get("symbols", {}).items():
+            sl = data.get("stop_loss", "-")
+            tp = data.get("take_profit", "-")
+            line = translate(message.chat.id, "symbol_config", symbol=sym, sl=sl, tp=tp)
+            if "percent" in data:
+                line += translate(message.chat.id, "symbol_config_percent", percent=data["percent"], base=data.get("base_price"))
+            amt = data.get("trade_amount", 0.0)
+            pct = data.get("trade_percent")
+            if amt > 0:
+                line += translate(message.chat.id, "symbol_config_trade_amount", amount=amt)
+            if pct:
+                line += translate(message.chat.id, "symbol_config_trade_percent", percent=pct)
+            qty = data.get("quantity", 0.0)
+            if qty > 0:
+                line += translate(message.chat.id, "symbol_config_quantity", qty=qty)
+            lines.append(line)
     lines.append(translate(message.chat.id, "notifications_line", status=status))
-    lines.append(
-        translate(message.chat.id, "interval_line", minutes=check_interval)
-    )
+    lines.append(translate(message.chat.id, "interval_line", minutes=check_interval))
     bot.reply_to(message, "\n".join(lines))
-
-
 @bot.message_handler(commands=['stop'])
 def stop_notifications(message):
     cfg = get_user(message.chat.id)
