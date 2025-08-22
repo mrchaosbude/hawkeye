@@ -17,6 +17,7 @@ from datetime import datetime
 import logging
 import pandas as pd
 from strategies import get_strategy
+from binance_client import BinanceClient
 
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -43,6 +44,8 @@ def load_config():
             "strategy": "momentum",
             "strategy_params": {},
             "data_source": "binance",
+            "binance_api_key": "",
+            "binance_api_secret": "",
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -50,6 +53,8 @@ def load_config():
         data.setdefault("strategy", "momentum")
         data.setdefault("strategy_params", {})
         data.setdefault("data_source", "binance")
+        data.setdefault("binance_api_key", "")
+        data.setdefault("binance_api_secret", "")
         return data
 
 
@@ -62,6 +67,8 @@ def save_config():
         "strategy": strategy_name,
         "strategy_params": strategy_params,
         "data_source": data_source,
+        "binance_api_key": BINANCE_API_KEY,
+        "binance_api_secret": BINANCE_API_SECRET,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -70,6 +77,12 @@ def save_config():
                 sym_cfg.pop("trailing_percent", None)
             if sym_cfg.get("last_signal") is None:
                 sym_cfg.pop("last_signal", None)
+            if sym_cfg.get("trade_percent") is None:
+                sym_cfg.pop("trade_percent", None)
+            if sym_cfg.get("trade_amount", 0.0) == 0.0:
+                sym_cfg.pop("trade_amount", None)
+            if sym_cfg.get("quantity", 0.0) == 0.0:
+                sym_cfg.pop("quantity", None)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -111,7 +124,14 @@ summary_time = config.get("summary_time", "09:00")
 strategy_name = config.get("strategy", "momentum")
 strategy_params = config.get("strategy_params", {})
 data_source = config.get("data_source", "binance")
+BINANCE_API_KEY = config.get("binance_api_key", "")
+BINANCE_API_SECRET = config.get("binance_api_secret", "")
 strategy = get_strategy(strategy_name, **strategy_params)
+binance_client = (
+    BinanceClient(BINANCE_API_KEY, BINANCE_API_SECRET)
+    if BINANCE_API_KEY and BINANCE_API_SECRET
+    else None
+)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -154,11 +174,17 @@ def get_user(chat_id):
             "take_profit": tp,
             "trailing_percent": None,
             "last_signal": None,
+            "quantity": 0.0,
+            "trade_amount": 0.0,
+            "trade_percent": None,
         }
         save_config()
     for sym_cfg in users[cid].get("symbols", {}).values():
         sym_cfg.setdefault("trailing_percent", None)
         sym_cfg.setdefault("last_signal", None)
+        sym_cfg.setdefault("quantity", 0.0)
+        sym_cfg.setdefault("trade_amount", 0.0)
+        sym_cfg.setdefault("trade_percent", None)
     users[cid].setdefault("language", "de")
     users[cid].setdefault("role", "user")
     users[cid].setdefault("max_symbols", 5)
@@ -851,6 +877,26 @@ def check_price():
                                 )
                             data["last_signal"] = signal
                             save_config()
+                            if binance_client and signal in ("buy", "sell"):
+                                amt = data.get("trade_amount", 0.0)
+                                pct = data.get("trade_percent")
+                                qty = 0.0
+                                if amt > 0 or (pct and pct > 0):
+                                    price = get_price(sym)
+                                    if price:
+                                        if pct and pct > 0:
+                                            balance = binance_client.balance()
+                                            qty = balance * pct / 100 / price
+                                        else:
+                                            qty = amt / price
+                                elif data.get("quantity", 0.0) > 0:
+                                    qty = data["quantity"]
+                                if qty > 0:
+                                    side = "BUY" if signal == "buy" else "SELL"
+                                    try:
+                                        binance_client.order(sym, side, qty)
+                                    except Exception as exc:
+                                        logger.error("order error for %s: %s", sym, exc)
                 except Exception as e:
                     logger.error("check_price signal error for %s: %s", sym, e)
 
@@ -964,6 +1010,39 @@ def watch_command(message):
     save_config()
     bot.reply_to(
         message, translate(message.chat.id, "watch_added", symbol=symbol)
+    )
+
+
+@bot.message_handler(commands=["autotrade"])
+def autotrade_command(message):
+    """Configure automatic trading amount or percent for a symbol."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 2:
+        bot.reply_to(message, translate(message.chat.id, "usage_autotrade"))
+        return
+    symbol, qty_str = parts[0].upper(), parts[1]
+    sym_cfg = cfg.setdefault("symbols", {}).setdefault(symbol, {})
+    if qty_str.endswith("%"):
+        try:
+            percent = float(qty_str[:-1])
+        except ValueError:
+            bot.reply_to(message, translate(message.chat.id, "autotrade_nan"))
+            return
+        sym_cfg["trade_percent"] = percent
+        sym_cfg["trade_amount"] = 0.0
+    else:
+        try:
+            amount = float(qty_str)
+        except ValueError:
+            bot.reply_to(message, translate(message.chat.id, "autotrade_nan"))
+            return
+        sym_cfg["trade_amount"] = amount
+        sym_cfg["trade_percent"] = None
+    save_config()
+    bot.reply_to(
+        message,
+        translate(message.chat.id, "autotrade_set", symbol=symbol, qty=qty_str),
     )
 
 
@@ -1290,6 +1369,7 @@ def show_menu(message):
         translate(message.chat.id, "menu_history"),
         translate(message.chat.id, "menu_top10"),
         translate(message.chat.id, "menu_signal"),
+        translate(message.chat.id, "menu_autotrade"),
         translate(message.chat.id, "menu_watch"),
         translate(message.chat.id, "menu_language"),
         "",
@@ -1312,6 +1392,19 @@ def show_menu(message):
                 percent=data["percent"],
                 base=data.get("base_price"),
             )
+        amt = data.get("trade_amount", 0.0)
+        pct = data.get("trade_percent")
+        if amt > 0:
+            line += translate(
+                message.chat.id, "symbol_config_trade_amount", amount=amt
+            )
+        if pct:
+            line += translate(
+                message.chat.id, "symbol_config_trade_percent", percent=pct
+            )
+        qty = data.get("quantity", 0.0)
+        if qty > 0:
+            line += translate(message.chat.id, "symbol_config_quantity", qty=qty)
         lines.append(line)
     lines.append(translate(message.chat.id, "notifications_line", status=status))
     lines.append(
