@@ -42,12 +42,14 @@ def load_config():
             "summary_time": "09:00",
             "strategy": "momentum",
             "strategy_params": {},
+            "data_source": "binance",
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
         data.pop("coingecko_api_key", None)
         data.setdefault("strategy", "momentum")
         data.setdefault("strategy_params", {})
+        data.setdefault("data_source", "binance")
         return data
 
 
@@ -59,6 +61,7 @@ def save_config():
         "summary_time": summary_time,
         "strategy": strategy_name,
         "strategy_params": strategy_params,
+        "data_source": data_source,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -107,6 +110,7 @@ check_interval = config.get("check_interval", 5)
 summary_time = config.get("summary_time", "09:00")
 strategy_name = config.get("strategy", "momentum")
 strategy_params = config.get("strategy_params", {})
+data_source = config.get("data_source", "binance")
 strategy = get_strategy(strategy_name, **strategy_params)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
@@ -498,14 +502,21 @@ def generate_binance_candlestick(pair):
         return None
 
 
-def get_daily_ohlcv(sym, limit=400):
+def get_daily_ohlcv_binance(sym, limit=400):
     try:
         r = requests.get(
             "https://api.binance.com/api/v3/klines",
             params={"symbol": sym, "interval": "1d", "limit": limit},
             timeout=10,
         )
-        r.raise_for_status()
+        if r.status_code != 200:
+            msg = ""
+            try:
+                msg = r.json().get("msg", "")
+            except Exception:
+                msg = r.text
+            logger.error("Binance API error for %s: %s", sym, msg)
+            return None
         raw = r.json()
         rows = [
             {
@@ -521,11 +532,55 @@ def get_daily_ohlcv(sym, limit=400):
         df = pd.DataFrame(rows).set_index("Date")
         return df
     except requests.Timeout:
-        logger.error("get_daily_ohlcv timeout for %s", sym)
+        logger.error("get_daily_ohlcv_binance timeout for %s", sym)
         return None
     except (requests.RequestException, ValueError) as e:
-        logger.error("get_daily_ohlcv error for %s: %s", sym, e)
+        logger.error("get_daily_ohlcv_binance error for %s: %s", sym, e)
         return None
+
+
+def get_daily_ohlcv_coinbase(sym, limit=400):
+    product = sym.replace("USDT", "-USDT").replace("USD", "-USD")
+    try:
+        r = requests.get(
+            f"https://api.exchange.coinbase.com/products/{product}/candles",
+            params={"granularity": 86400},
+            timeout=10,
+        )
+        if r.status_code != 200:
+            msg = ""
+            try:
+                msg = r.json().get("message", "")
+            except Exception:
+                msg = r.text
+            logger.error("Coinbase API error for %s: %s", sym, msg)
+            return None
+        raw = r.json()[:limit]
+        rows = [
+            {
+                "Date": datetime.utcfromtimestamp(item[0]),
+                "Open": float(item[3]),
+                "High": float(item[2]),
+                "Low": float(item[1]),
+                "Close": float(item[4]),
+                "Volume": float(item[5]),
+            }
+            for item in raw
+        ]
+        df = pd.DataFrame(rows).set_index("Date").sort_index()
+        return df
+    except requests.Timeout:
+        logger.error("get_daily_ohlcv_coinbase timeout for %s", sym)
+        return None
+    except (requests.RequestException, ValueError) as e:
+        logger.error("get_daily_ohlcv_coinbase error for %s: %s", sym, e)
+        return None
+
+
+def get_daily_ohlcv(sym, limit=400):
+    if data_source == "coinbase":
+        return get_daily_ohlcv_coinbase(sym, limit)
+    return get_daily_ohlcv_binance(sym, limit)
 
 
 def cache_top10_candles():
