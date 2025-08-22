@@ -74,5 +74,6 @@
   "signal_buy": "kaufen",
   "signal_sell": "verkaufen",
   "signal_hold": "halten",
+  "signal_changed": "🔔 {symbol}: Signal {old} → {new}",
   "admin_only": "⚠ Nur Admins dürfen diesen Befehl verwenden."
 }

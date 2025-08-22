@@ -65,6 +65,8 @@ def save_config():
         for sym_cfg in cfg.get("symbols", {}).values():
             if sym_cfg.get("trailing_percent") is None:
                 sym_cfg.pop("trailing_percent", None)
+            if sym_cfg.get("last_signal") is None:
+                sym_cfg.pop("last_signal", None)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -147,10 +149,12 @@ def get_user(chat_id):
             "stop_loss": sl,
             "take_profit": tp,
             "trailing_percent": None,
+            "last_signal": None,
         }
         save_config()
     for sym_cfg in users[cid].get("symbols", {}).values():
         sym_cfg.setdefault("trailing_percent", None)
+        sym_cfg.setdefault("last_signal", None)
     users[cid].setdefault("language", "de")
     users[cid].setdefault("role", "user")
     users[cid].setdefault("max_symbols", 5)
@@ -672,6 +676,7 @@ def fetch_live_prices(coins):
 
 # === FUNKTIONEN: Checks ===
 def check_price():
+    benchmark = get_daily_ohlcv("BTCUSDT")
     for cid, cfg in users.items():
         if not cfg.get("notifications", True):
             continue
@@ -769,6 +774,30 @@ def check_price():
                             bot.send_photo(cid, chart)
                         data["base_price"] = price
                         save_config()
+
+                # Signal-Änderungen überwachen
+                try:
+                    asset = get_daily_ohlcv(sym)
+                    if asset is not None and benchmark is not None:
+                        sigs = strategy.generate_signals(asset, benchmark)
+                        signal = sigs.iloc[-1]["Signal"]
+                        last_signal = data.get("last_signal")
+                        if signal != last_signal:
+                            if last_signal is not None:
+                                bot.send_message(
+                                    cid,
+                                    translate(
+                                        cid,
+                                        "signal_changed",
+                                        symbol=sym,
+                                        old=translate(cid, f"signal_{last_signal}"),
+                                        new=translate(cid, f"signal_{signal}"),
+                                    ),
+                                )
+                            data["last_signal"] = signal
+                            save_config()
+                except Exception as e:
+                    logger.error("check_price signal error for %s: %s", sym, e)
 
 
 def check_updates():
