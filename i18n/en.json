@@ -74,5 +74,6 @@
   "signal_buy": "buy",
   "signal_sell": "sell",
   "signal_hold": "hold",
+  "signal_changed": "🔔 {symbol}: signal changed from {old} to {new}",
   "admin_only": "⚠ Admins only."
 }
