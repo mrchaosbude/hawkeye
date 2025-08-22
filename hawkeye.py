@@ -16,6 +16,7 @@ import threading
 import subprocess
 import sys
 import io
+from typing import Any
 import sqlite3
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -42,7 +43,18 @@ DB_FILE = "cache.db"
 I18N_DIR = "i18n"
 
 
-def load_config():
+def load_config() -> dict[str, Any]:
+    """Load configuration from the JSON file.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    dict[str, Any]
+        Configuration dictionary with application settings.
+    """
     if not os.path.exists(CONFIG_FILE):
         return {
             "telegram_token": "",
@@ -69,7 +81,17 @@ def load_config():
         return data
 
 
-def save_config():
+def save_config() -> None:
+    """Persist the current configuration to disk.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     data = {
         "telegram_token": TELEGRAM_TOKEN,
         "users": users,
@@ -98,7 +120,17 @@ def save_config():
         json.dump(data, f, indent=2)
 
 
-def init_db():
+def init_db() -> None:
+    """Initialize the SQLite cache database if necessary.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     with sqlite3.connect(DB_FILE) as conn:
         cur = conn.cursor()
         cur.execute(
@@ -147,7 +179,17 @@ init_db()
 translations = {}
 
 
-def load_translations():
+def load_translations() -> None:
+    """Load translation files from the ``i18n`` directory.
+
+    Parameters
+    ----------
+    None
+
+    Returns
+    -------
+    None
+    """
     if not os.path.isdir(I18N_DIR):
         return
     for fname in os.listdir(I18N_DIR):
