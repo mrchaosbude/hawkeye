@@ -42,6 +42,42 @@ COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 DB_FILE = "cache.db"
 I18N_DIR = "i18n"
 
+def fetch_json(url, params=None, timeout=10, max_retries=3, backoff_factor=1.0):
+    """Perform a GET request and return parsed JSON.
+
+    Errors are logged and ``None`` is returned on failure. A simple
+    exponential backoff is used between retries.
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            resp = requests.get(url, params=params, timeout=timeout)
+            status = getattr(resp, "status_code", 200)
+            if status >= 400:
+                msg = ""
+                try:
+                    body = resp.json()
+                    if isinstance(body, dict):
+                        msg = body.get("msg") or body.get("message") or str(body)
+                    else:
+                        msg = str(body)
+                except Exception:
+                    msg = getattr(resp, "text", "")
+                raise Exception(msg)
+            return resp.json()
+        except Exception as exc:
+            logger.error(
+                "fetch_json error for %s (attempt %d/%d): %s",
+                url,
+                attempt,
+                max_retries,
+                exc,
+            )
+            if attempt == max_retries:
+                break
+            wait = backoff_factor * (2 ** (attempt - 1))
+            time.sleep(wait)
+    return None
+
 
 def load_config() -> dict[str, Any]:
     """Load configuration from the JSON file.
@@ -316,18 +352,14 @@ def translate(chat_id, key, **kwargs):
 
 # === FUNKTIONEN ===
 def get_price(sym):
+    data = fetch_json(BINANCE_PRICE_URL, params={"symbol": sym})
+    if data is None:
+        return None
     try:
-        r = requests.get(
-            BINANCE_PRICE_URL, params={"symbol": sym}, timeout=10
-        )
-        r.raise_for_status()
-        price = float(r.json()["markPrice"])
+        price = float(data["markPrice"])
         logger.debug("get_price %s -> %s", sym, price)
         return price
-    except requests.Timeout:
-        logger.error("get_price timeout for %s", sym)
-        return None
-    except (requests.RequestException, ValueError, KeyError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error("get_price error for %s: %s", sym, e)
         return None
 
@@ -335,14 +367,12 @@ def get_price(sym):
 def generate_buy_sell_chart(sym):
     """Erstellt ein Orderbuch-Diagramm mit den 20 oberen Kauf- und Verkaufsaufträgen."""
     try:
-        # Orderbuch-Daten abrufen (20 Level)
-        r = requests.get(
+        data = fetch_json(
             "https://fapi.binance.com/fapi/v1/depth",
             params={"symbol": sym, "limit": 20},
-            timeout=10,
         )
-        r.raise_for_status()
-        data = r.json()
+        if not data:
+            return None
 
         bids = [(float(p), float(q)) for p, q in data.get("bids", [])]
         asks = [(float(p), float(q)) for p, q in data.get("asks", [])]
@@ -376,74 +406,54 @@ def generate_buy_sell_chart(sym):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except requests.Timeout:
-        logger.error("generate_buy_sell_chart timeout for %s", sym)
-        return None
-    except (requests.RequestException, ValueError) as e:
+    except (ValueError, KeyError, TypeError) as e:
         logger.error("generate_buy_sell_chart error for %s: %s", sym, e)
         return None
 
 
 def get_top10_coingecko():
-    try:
-        r = requests.get(
-            COINGECKO_MARKETS_URL,
-            params={
-                "vs_currency": "usd",
-                "order": "market_cap_desc",
-                "per_page": 10,
-                "page": 1,
-                "price_change_percentage": "24h",
-            },
-            timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json()
-        for coin in data:
-            if "price_change_percentage_24h" not in coin:
-                pct = coin.get("price_change_percentage_24h_in_currency")
-                if pct is not None:
-                    coin["price_change_percentage_24h"] = pct
-        logger.debug("get_top10_coingecko returned %d coins", len(data))
-        return data
-    except requests.Timeout:
-        logger.error("get_top10_coingecko timeout")
+    data = fetch_json(
+        COINGECKO_MARKETS_URL,
+        params={
+            "vs_currency": "usd",
+            "order": "market_cap_desc",
+            "per_page": 10,
+            "page": 1,
+            "price_change_percentage": "24h",
+        },
+    )
+    if not data:
         return []
-    except (requests.RequestException, ValueError) as e:
-        logger.error("get_top10_coingecko error: %s", e)
-        return []
+    for coin in data:
+        if "price_change_percentage_24h" not in coin:
+            pct = coin.get("price_change_percentage_24h_in_currency")
+            if pct is not None:
+                coin["price_change_percentage_24h"] = pct
+    logger.debug("get_top10_coingecko returned %d coins", len(data))
+    return data
 
 
 def get_top10_binance():
-    try:
-        r = requests.get(
-            "https://api.binance.com/api/v3/ticker/24hr", timeout=10
+    tickers = fetch_json("https://api.binance.com/api/v3/ticker/24hr")
+    if not tickers:
+        return []
+    top10 = sorted(
+        tickers, key=lambda x: float(x.get("quoteVolume", 0)), reverse=True
+    )[:10]
+    coins = []
+    for t in top10:
+        coins.append(
+            {
+                "name": t["symbol"],
+                "symbol": t["symbol"],
+                "current_price": float(t["lastPrice"]),
+                "price_change_percentage_24h": float(
+                    t["priceChangePercent"]
+                ),
+            }
         )
-        r.raise_for_status()
-        tickers = r.json()
-        top10 = sorted(
-            tickers, key=lambda x: float(x.get("quoteVolume", 0)), reverse=True
-        )[:10]
-        coins = []
-        for t in top10:
-            coins.append(
-                {
-                    "name": t["symbol"],
-                    "symbol": t["symbol"],
-                    "current_price": float(t["lastPrice"]),
-                    "price_change_percentage_24h": float(
-                        t["priceChangePercent"]
-                    ),
-                }
-            )
-        logger.debug("get_top10_binance returned %d coins", len(coins))
-        return coins
-    except requests.Timeout:
-        logger.error("get_top10_binance timeout")
-        return []
-    except (requests.RequestException, ValueError) as e:
-        logger.error("get_top10_binance error: %s", e)
-        return []
+    logger.debug("get_top10_binance returned %d coins", len(coins))
+    return coins
 
 
 def get_top10_cryptos():
@@ -469,79 +479,20 @@ def generate_top10_chart(coins):
             logger.debug("Processing %s", symbol)
             ohlc_data = []
             coin_id = coin.get("id")
-            backoff = 1
-            max_attempts = 5
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    logger.debug(
-                        "Requesting Coingecko OHLC for %s (attempt %d)",
-                        coin_id,
-                        attempt,
+            raw = fetch_json(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                params={"vs_currency": "usd", "days": 7},
+                max_retries=5,
+            )
+            if raw:
+                logger.debug(
+                    "Coingecko returned %d entries for %s", len(raw), symbol
+                )
+                for t, o, h, l, c in raw:
+                    ohlc_data.append(
+                        [mdates.date2num(datetime.utcfromtimestamp(t / 1000)), o, h, l, c]
                     )
-                    r = requests.get(
-                        f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                        params={"vs_currency": "usd", "days": 7},
-                        timeout=10,
-                    )
-                    logger.debug("Coingecko status %s", r.status_code)
-                    if r.status_code == 429:
-                        wait = 60
-                        logger.debug(
-                            "429 for %s, sleeping %s s before retry", symbol, wait
-                        )
-                        time.sleep(wait)
-                        backoff *= 2
-                        continue
-                    r.raise_for_status()
-                    raw = r.json()
-                    logger.debug(
-                        "Coingecko returned %d entries for %s", len(raw), symbol
-                    )
-                    for t, o, h, l, c in raw:
-                        ohlc_data.append(
-                            [mdates.date2num(datetime.utcfromtimestamp(t / 1000)), o, h, l, c]
-                        )
-                    time.sleep(1)
-                    break
-                except requests.Timeout:
-                    logger.error(
-                        "Coingecko OHLC timeout for %s (attempt %d)",
-                        symbol,
-                        attempt,
-                    )
-                    if attempt == max_attempts:
-                        ohlc_data = []
-                        logger.debug(
-                            "Failed to fetch OHLC for %s after %d attempts",
-                            symbol,
-                            max_attempts,
-                        )
-                    else:
-                        wait = backoff
-                        logger.debug(
-                            "Retrying %s in %s s after timeout", symbol, wait
-                        )
-                        time.sleep(wait)
-                        backoff *= 2
-                except (requests.RequestException, ValueError) as e:
-                    logger.error(
-                        "Coingecko OHLC error for %s: %s (attempt %d)",
-                        symbol,
-                        e,
-                        attempt,
-                    )
-                    if attempt == max_attempts:
-                        ohlc_data = []
-                        logger.debug(
-                            "Failed to fetch OHLC for %s after %d attempts",
-                            symbol,
-                            max_attempts,
-                        )
-                    else:
-                        wait = backoff
-                        logger.debug("Retrying %s in %s s", symbol, wait)
-                        time.sleep(wait)
-                        backoff *= 2
+                time.sleep(1)
 
             if ohlc_data:
                 logger.debug(
@@ -593,13 +544,12 @@ def to_binance_pair(symbol: str):
 
 def generate_binance_candlestick(pair):
     try:
-        r = requests.get(
+        raw = fetch_json(
             "https://api.binance.com/api/v3/klines",
             params={"symbol": pair, "interval": "1h", "limit": 24},
-            timeout=10,
         )
-        r.raise_for_status()
-        raw = r.json()
+        if not raw:
+            return None
         ohlc = [
             [
                 mdates.date2num(datetime.utcfromtimestamp(item[0] / 1000)),
@@ -624,10 +574,7 @@ def generate_binance_candlestick(pair):
         plt.close(fig)
         buf.seek(0)
         return buf
-    except requests.Timeout:
-        logger.error("generate_binance_candlestick timeout for %s", pair)
-        return None
-    except (requests.RequestException, ValueError) as e:
+    except (ValueError, TypeError) as e:
         logger.error(
             "generate_binance_candlestick error for %s: %s", pair, e
         )
@@ -635,21 +582,14 @@ def generate_binance_candlestick(pair):
 
 
 def get_daily_ohlcv_binance(sym, limit=400):
+    raw = fetch_json(
+        "https://api.binance.com/api/v3/klines",
+        params={"symbol": sym, "interval": "1d", "limit": limit},
+    )
+    if not raw:
+        logger.error("Binance API error for %s", sym)
+        return None
     try:
-        r = requests.get(
-            "https://api.binance.com/api/v3/klines",
-            params={"symbol": sym, "interval": "1d", "limit": limit},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            msg = ""
-            try:
-                msg = r.json().get("msg", "")
-            except Exception:
-                msg = r.text
-            logger.error("Binance API error for %s: %s", sym, msg)
-            return None
-        raw = r.json()
         rows = [
             {
                 "Date": datetime.utcfromtimestamp(item[0] / 1000),
@@ -663,31 +603,21 @@ def get_daily_ohlcv_binance(sym, limit=400):
         ]
         df = pd.DataFrame(rows).set_index("Date")
         return df
-    except requests.Timeout:
-        logger.error("get_daily_ohlcv_binance timeout for %s", sym)
-        return None
-    except (requests.RequestException, ValueError) as e:
+    except (ValueError, TypeError) as e:
         logger.error("get_daily_ohlcv_binance error for %s: %s", sym, e)
         return None
 
 
 def get_daily_ohlcv_coinbase(sym, limit=400):
     product = sym.replace("USDT", "-USDT").replace("USD", "-USD")
+    raw = fetch_json(
+        f"https://api.exchange.coinbase.com/products/{product}/candles",
+        params={"granularity": 86400},
+    )
+    if not raw:
+        logger.error("Coinbase API error for %s", sym)
+        return None
     try:
-        r = requests.get(
-            f"https://api.exchange.coinbase.com/products/{product}/candles",
-            params={"granularity": 86400},
-            timeout=10,
-        )
-        if r.status_code != 200:
-            msg = ""
-            try:
-                msg = r.json().get("message", "")
-            except Exception:
-                msg = r.text
-            logger.error("Coinbase API error for %s: %s", sym, msg)
-            return None
-        raw = r.json()[:limit]
         rows = [
             {
                 "Date": datetime.utcfromtimestamp(item[0]),
@@ -697,14 +627,11 @@ def get_daily_ohlcv_coinbase(sym, limit=400):
                 "Close": float(item[4]),
                 "Volume": float(item[5]),
             }
-            for item in raw
+            for item in raw[:limit]
         ]
         df = pd.DataFrame(rows).set_index("Date").sort_index()
         return df
-    except requests.Timeout:
-        logger.error("get_daily_ohlcv_coinbase timeout for %s", sym)
-        return None
-    except (requests.RequestException, ValueError) as e:
+    except (ValueError, TypeError) as e:
         logger.error("get_daily_ohlcv_coinbase error for %s: %s", sym, e)
         return None
 
@@ -734,27 +661,26 @@ def cache_top10_candles():
                 "INSERT OR REPLACE INTO top10(symbol, id, name, cached_at) VALUES (?, ?, ?, ?)",
                 (symbol, coin_id, name, now),
             )
-            try:
-                r = requests.get(
-                    f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
-                    params={"vs_currency": "usd", "days": 7},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                raw = r.json()
-                for t, o, h, l, c in raw:
-                    cur.execute(
-                        "INSERT OR REPLACE INTO candles(symbol, timestamp, open, high, low, close) VALUES (?, ?, ?, ?, ?, ?)",
-                        (symbol, int(t / 1000), o, h, l, c),
+            raw = fetch_json(
+                f"https://api.coingecko.com/api/v3/coins/{coin_id}/ohlc",
+                params={"vs_currency": "usd", "days": 7},
+                max_retries=5,
+            )
+            if raw:
+                try:
+                    for t, o, h, l, c in raw:
+                        cur.execute(
+                            "INSERT OR REPLACE INTO candles(symbol, timestamp, open, high, low, close) VALUES (?, ?, ?, ?, ?, ?)",
+                            (symbol, int(t / 1000), o, h, l, c),
+                        )
+                    time.sleep(1)
+                except (sqlite3.Error, ValueError, TypeError) as e:
+                    logger.error(
+                        "cache_top10_candles OHLC error for %s: %s", symbol, e
                     )
-                time.sleep(1)
-            except requests.Timeout:
+            else:
                 logger.error(
-                    "cache_top10_candles OHLC timeout for %s", symbol
-                )
-            except (requests.RequestException, sqlite3.Error, ValueError) as e:
-                logger.error(
-                    "cache_top10_candles OHLC error for %s: %s", symbol, e
+                    "cache_top10_candles OHLC error for %s", symbol
                 )
         conn.commit()
 
@@ -839,27 +765,21 @@ def generate_cached_candle_chart(symbol):
 
 def fetch_live_prices(coins):
     ids = ",".join([coin["id"] for coin in coins])
-    try:
-        r = requests.get(
-            COINGECKO_MARKETS_URL,
-            params={"vs_currency": "usd", "ids": ids},
-            timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json()
-        lookup = {item["symbol"].upper(): item for item in data}
-        for coin in coins:
-            sym = coin["symbol"].upper()
-            info = lookup.get(sym)
-            if info:
-                coin["current_price"] = info.get("current_price")
-                coin["price_change_percentage_24h"] = info.get(
-                    "price_change_percentage_24h"
-                ) or info.get("price_change_percentage_24h_in_currency")
-    except requests.Timeout:
-        logger.error("fetch_live_prices timeout")
-    except (requests.RequestException, ValueError) as e:
-        logger.error("fetch_live_prices error: %s", e)
+    data = fetch_json(
+        COINGECKO_MARKETS_URL,
+        params={"vs_currency": "usd", "ids": ids},
+    )
+    if not data:
+        return
+    lookup = {item["symbol"].upper(): item for item in data}
+    for coin in coins:
+        sym = coin["symbol"].upper()
+        info = lookup.get(sym)
+        if info:
+            coin["current_price"] = info.get("current_price")
+            coin["price_change_percentage_24h"] = info.get(
+                "price_change_percentage_24h"
+            ) or info.get("price_change_percentage_24h_in_currency")
 
 
 def record_simulated_trade(cfg, side, price, qty):
@@ -1071,18 +991,20 @@ def send_daily_summary(chat_id=None):
             continue
         lines = [translate(cid, "daily_summary_header")]
         for sym in symbols:
-            try:
-                r = requests.get(
-                    "https://fapi.binance.com/fapi/v1/ticker/24hr",
-                    params={"symbol": sym},
-                    timeout=10,
-                )
-                r.raise_for_status()
-                data = r.json()
-                price = float(data.get("lastPrice"))
-                change = float(data.get("priceChangePercent"))
-                lines.append(f"{sym}: {price:.2f} ({change:+.2f}%)")
-            except (requests.RequestException, ValueError):
+            data = fetch_json(
+                "https://fapi.binance.com/fapi/v1/ticker/24hr",
+                params={"symbol": sym},
+            )
+            if data:
+                try:
+                    price = float(data.get("lastPrice"))
+                    change = float(data.get("priceChangePercent"))
+                    lines.append(f"{sym}: {price:.2f} ({change:+.2f}%)")
+                except (TypeError, ValueError):
+                    lines.append(
+                        translate(cid, "price_not_available", symbol=sym)
+                    )
+            else:
                 lines.append(translate(cid, "price_not_available", symbol=sym))
         bot.send_message(cid, "\n".join(lines))
 
