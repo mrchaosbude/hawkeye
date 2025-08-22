@@ -55,6 +55,9 @@ def load_config():
         data.setdefault("data_source", "binance")
         data.setdefault("binance_api_key", "")
         data.setdefault("binance_api_secret", "")
+        for cfg in data.get("users", {}).values():
+            cfg.setdefault("binance_api_key", "")
+            cfg.setdefault("binance_api_secret", "")
         return data
 
 
@@ -127,11 +130,7 @@ data_source = config.get("data_source", "binance")
 BINANCE_API_KEY = config.get("binance_api_key", "")
 BINANCE_API_SECRET = config.get("binance_api_secret", "")
 strategy = get_strategy(strategy_name, **strategy_params)
-binance_client = (
-    BinanceClient(BINANCE_API_KEY, BINANCE_API_SECRET)
-    if BINANCE_API_KEY and BINANCE_API_SECRET
-    else None
-)
+binance_clients = {}
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -162,6 +161,8 @@ def get_user(chat_id):
             "language": "de",
             "role": "user",
             "max_symbols": 5,
+            "binance_api_key": "",
+            "binance_api_secret": "",
         }
         save_config()
     # Sicherstellen, dass ältere Konfigurationen migriert werden
@@ -188,12 +189,37 @@ def get_user(chat_id):
     users[cid].setdefault("language", "de")
     users[cid].setdefault("role", "user")
     users[cid].setdefault("max_symbols", 5)
+    users[cid].setdefault("binance_api_key", "")
+    users[cid].setdefault("binance_api_secret", "")
     return users[cid]
 
 
 def is_admin(chat_id):
     """Check if the user has admin role."""
     return get_user(chat_id).get("role") == "admin"
+
+
+def get_binance_client(chat_id):
+    cid = str(chat_id) if chat_id is not None else None
+    key = BINANCE_API_KEY
+    secret = BINANCE_API_SECRET
+    if cid is not None:
+        user = get_user(cid)
+        key = user.get("binance_api_key") or key
+        secret = user.get("binance_api_secret") or secret
+    if not key or not secret:
+        return None
+    cache_key = cid or "global"
+    client = binance_clients.get(cache_key)
+    if (
+        client
+        and getattr(client, "api_key", None) == key
+        and getattr(client, "api_secret", None) == secret
+    ):
+        return client
+    client = BinanceClient(key, secret)
+    binance_clients[cache_key] = client
+    return client
 
 
 def translate(chat_id, key, **kwargs):
@@ -877,7 +903,8 @@ def check_price():
                                 )
                             data["last_signal"] = signal
                             save_config()
-                            if binance_client and signal in ("buy", "sell"):
+                            client = get_binance_client(cid)
+                            if client and signal in ("buy", "sell"):
                                 amt = data.get("trade_amount", 0.0)
                                 pct = data.get("trade_percent")
                                 qty = 0.0
@@ -885,7 +912,7 @@ def check_price():
                                     price = get_price(sym)
                                     if price:
                                         if pct and pct > 0:
-                                            balance = binance_client.balance()
+                                            balance = client.balance()
                                             qty = balance * pct / 100 / price
                                         else:
                                             qty = amt / price
@@ -894,7 +921,7 @@ def check_price():
                                 if qty > 0:
                                     side = "BUY" if signal == "buy" else "SELL"
                                     try:
-                                        binance_client.order(sym, side, qty)
+                                        client.order(sym, side, qty)
                                     except Exception as exc:
                                         logger.error("order error for %s: %s", sym, exc)
                 except Exception as e:
@@ -1044,6 +1071,22 @@ def autotrade_command(message):
         message,
         translate(message.chat.id, "autotrade_set", symbol=symbol, qty=qty_str),
     )
+
+
+@bot.message_handler(commands=["setkeys"])
+def set_keys_command(message):
+    """Set Binance API key and secret for the user."""
+    parts = message.text.split()[1:]
+    if len(parts) != 2:
+        bot.reply_to(message, "Usage: /setkeys API_KEY API_SECRET")
+        return
+    api_key, api_secret = parts
+    cfg = get_user(message.chat.id)
+    cfg["binance_api_key"] = api_key
+    cfg["binance_api_secret"] = api_secret
+    binance_clients.pop(str(message.chat.id), None)
+    save_config()
+    bot.reply_to(message, "✅ API keys updated.")
 
 
 @bot.message_handler(commands=["percent"])

@@ -109,7 +109,8 @@ def test_signal_change_triggers_notification(monkeypatch):
         def balance(self):
             return 1000.0
 
-    monkeypatch.setattr(hawkeye, "binance_client", DummyTrader())
+    trader = DummyTrader()
+    monkeypatch.setattr(hawkeye, "get_binance_client", lambda cid: trader)
 
     # Act
     hawkeye.check_price()
