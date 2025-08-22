@@ -18,6 +18,7 @@ import logging
 import pandas as pd
 from strategies import get_strategy
 from binance_client import BinanceClient
+from autotrade_simulation import simulate_autotrade
 
 LOG_LEVEL_NAME = os.environ.get("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -781,6 +782,26 @@ def fetch_live_prices(coins):
     except (requests.RequestException, ValueError) as e:
         logger.error("fetch_live_prices error: %s", e)
 
+
+def record_simulated_trade(cfg, side, price, qty):
+    """Update simulation state with a trade and return a status message."""
+    balance = cfg.get("sim_balance", cfg.get("sim_start", 0.0))
+    position = cfg.get("sim_position", 0.0)
+    side_u = side.upper()
+    if side_u == "BUY":
+        balance -= price * qty
+        position += qty
+    elif side_u == "SELL":
+        balance += price * qty
+        position -= qty
+    else:
+        raise ValueError(f"unknown trade side: {side}")
+    cfg["sim_balance"] = balance
+    cfg["sim_position"] = position
+    actions = cfg.setdefault("sim_actions", [])
+    actions.append({"side": side_u, "price": price, "qty": qty})
+    return simulate_autotrade(actions, cfg["sim_start"])[-1]
+
 # === FUNKTIONEN: Checks ===
 def check_price():
     benchmark = get_daily_ohlcv("BTCUSDT")
@@ -904,26 +925,38 @@ def check_price():
                             data["last_signal"] = signal
                             save_config()
                             client = get_binance_client(cid)
-                            if client and signal in ("buy", "sell"):
+                            if signal in ("buy", "sell"):
                                 amt = data.get("trade_amount", 0.0)
                                 pct = data.get("trade_percent")
                                 qty = 0.0
-                                if amt > 0 or (pct and pct > 0):
-                                    price = get_price(sym)
-                                    if price:
+                                price = get_price(sym)
+                                if price:
+                                    if data.get("sim_start") is not None:
                                         if pct and pct > 0:
-                                            balance = client.balance()
-                                            qty = balance * pct / 100 / price
-                                        else:
+                                            qty = data.get("sim_balance", data["sim_start"]) * pct / 100 / price
+                                        elif amt > 0:
                                             qty = amt / price
-                                elif data.get("quantity", 0.0) > 0:
-                                    qty = data["quantity"]
-                                if qty > 0:
-                                    side = "BUY" if signal == "buy" else "SELL"
-                                    try:
-                                        client.order(sym, side, qty)
-                                    except Exception as exc:
-                                        logger.error("order error for %s: %s", sym, exc)
+                                        elif data.get("quantity", 0.0) > 0:
+                                            qty = data["quantity"]
+                                        if qty > 0:
+                                            side = "BUY" if signal == "buy" else "SELL"
+                                            msg = record_simulated_trade(data, side, price, qty)
+                                            bot.send_message(cid, msg)
+                                    elif client:
+                                        if amt > 0 or (pct and pct > 0):
+                                            if pct and pct > 0:
+                                                balance = client.balance()
+                                                qty = balance * pct / 100 / price
+                                            else:
+                                                qty = amt / price
+                                        elif data.get("quantity", 0.0) > 0:
+                                            qty = data["quantity"]
+                                        if qty > 0:
+                                            side = "BUY" if signal == "buy" else "SELL"
+                                            try:
+                                                client.order(sym, side, qty)
+                                            except Exception as exc:
+                                                logger.error("order error for %s: %s", sym, exc)
                 except Exception as e:
                     logger.error("check_price signal error for %s: %s", sym, e)
 
@@ -1070,6 +1103,54 @@ def autotrade_command(message):
     bot.reply_to(
         message,
         translate(message.chat.id, "autotrade_set", symbol=symbol, qty=qty_str),
+    )
+
+
+@bot.message_handler(commands=["autotradesim"])
+def autotradesim_command(message):
+    """Configure simulated auto trading with starting balance."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 3:
+        bot.reply_to(message, translate(message.chat.id, "usage_autotradesim"))
+        return
+    start_str, symbol, qty_str = parts[0], parts[1].upper(), parts[2]
+    try:
+        start_balance = float(start_str)
+    except ValueError:
+        bot.reply_to(message, translate(message.chat.id, "autotradesim_nan"))
+        return
+    sym_cfg = cfg.setdefault("symbols", {}).setdefault(symbol, {})
+    sym_cfg["sim_start"] = start_balance
+    sym_cfg["sim_balance"] = start_balance
+    sym_cfg["sim_position"] = 0.0
+    sym_cfg["sim_actions"] = []
+    if qty_str.endswith("%"):
+        try:
+            percent = float(qty_str[:-1])
+        except ValueError:
+            bot.reply_to(message, translate(message.chat.id, "autotrade_nan"))
+            return
+        sym_cfg["trade_percent"] = percent
+        sym_cfg["trade_amount"] = 0.0
+    else:
+        try:
+            amount = float(qty_str)
+        except ValueError:
+            bot.reply_to(message, translate(message.chat.id, "autotrade_nan"))
+            return
+        sym_cfg["trade_amount"] = amount
+        sym_cfg["trade_percent"] = None
+    save_config()
+    bot.reply_to(
+        message,
+        translate(
+            message.chat.id,
+            "autotradesim_set",
+            symbol=symbol,
+            start=start_balance,
+            qty=qty_str,
+        ),
     )
 
 
@@ -1413,6 +1494,7 @@ def show_menu(message):
         translate(message.chat.id, "menu_top10"),
         translate(message.chat.id, "menu_signal"),
         translate(message.chat.id, "menu_autotrade"),
+        translate(message.chat.id, "menu_autotradesim"),
         translate(message.chat.id, "menu_watch"),
         translate(message.chat.id, "menu_language"),
         "",
