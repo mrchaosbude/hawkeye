@@ -940,6 +940,33 @@ def set_config(message):
     )
 
 
+@bot.message_handler(commands=["watch"])
+def watch_command(message):
+    """Symbol für automatische Signalbenachrichtigungen hinzufügen."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 1:
+        bot.reply_to(message, translate(message.chat.id, "usage_watch"))
+        return
+    symbol = parts[0].upper()
+    symbols = cfg.setdefault("symbols", {})
+    if symbol not in symbols and len(symbols) >= cfg.get("max_symbols", 5):
+        bot.reply_to(
+            message,
+            translate(
+                message.chat.id,
+                "max_symbols_reached",
+                max_symbols=cfg.get("max_symbols", 5),
+            ),
+        )
+        return
+    symbols.setdefault(symbol, {})
+    save_config()
+    bot.reply_to(
+        message, translate(message.chat.id, "watch_added", symbol=symbol)
+    )
+
+
 @bot.message_handler(commands=["percent"])
 def set_percent_command(message):
     """Prozentuale Preisänderung überwachen."""
@@ -1263,6 +1290,7 @@ def show_menu(message):
         translate(message.chat.id, "menu_history"),
         translate(message.chat.id, "menu_top10"),
         translate(message.chat.id, "menu_signal"),
+        translate(message.chat.id, "menu_watch"),
         translate(message.chat.id, "menu_language"),
         "",
         translate(message.chat.id, "menu_config_header"),
