@@ -44,7 +44,7 @@
   "menu_trail": "/trail SYMBOL PROZENT - Trailing Stop-Loss setzen/entfernen",
   "menu_stop": "/stop - Benachrichtigungen deaktivieren",
   "menu_start": "/start - Benachrichtigungen aktivieren",
-  "menu_menu": "/menu - Dieses Menü anzeigen",
+  "menu_menu": "/menu [ABSCHNITT] - dieses Menü oder nur ABSCHNITT anzeigen",
   "menu_interval": "/interval MINUTEN - Prüfintervall setzen (nur Admin)",
   "menu_summarytime": "/summarytime HH:MM - Zeitpunkt der Tageszusammenfassung setzen (nur Admin)",
   "menu_now": "/now - Aktuelle Preise anzeigen",
@@ -89,5 +89,9 @@
   "signal_sell": "verkaufen",
   "signal_hold": "halten",
   "signal_changed": "🔔 {symbol}: Signal {old} → {new}",
-  "admin_only": "⚠ Nur Admins dürfen diesen Befehl verwenden."
+  "admin_only": "⚠ Nur Admins dürfen diesen Befehl verwenden.",
+  "menu_section_symbol": "🔧 Symbolverwaltung:",
+  "menu_section_trading": "💹 Trading:",
+  "menu_section_system": "⚙️ System:",
+  "menu_section_invalid": "⚠ Unbekannter Abschnitt: {section}"
 }
