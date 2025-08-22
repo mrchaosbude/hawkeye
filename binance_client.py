@@ -1,8 +1,29 @@
 import hmac
 import hashlib
+import logging
 import time
 from urllib.parse import urlencode
+
 import requests
+try:  # pragma: no cover - optional dependency in tests
+    from requests.exceptions import RequestException, Timeout
+except Exception:  # pragma: no cover - fallback when requests is stubbed
+    class RequestException(Exception):
+        """Fallback RequestException when requests is not fully available."""
+
+        pass
+
+    class Timeout(RequestException):
+        """Fallback Timeout when requests is not fully available."""
+
+        pass
+
+
+logger = logging.getLogger(__name__)
+
+
+class BinanceAPIError(Exception):
+    """Raised when Binance API request fails."""
 
 
 class BinanceClient:
@@ -33,22 +54,42 @@ class BinanceClient:
         }
         signed = self._sign(params)
         headers = {"X-MBX-APIKEY": self.api_key}
-        response = requests.post(
-            f"{self.BASE_URL}/fapi/v1/order", headers=headers, params=signed, timeout=10
-        )
-        response.raise_for_status()
-        return response.json()
+        try:
+            response = requests.post(
+                f"{self.BASE_URL}/fapi/v1/order",
+                headers=headers,
+                params=signed,
+                timeout=10,
+            )
+            response.raise_for_status()
+            return response.json()
+        except Timeout as exc:  # pragma: no cover - network timeout
+            logger.error("Binance order request timed out for %s", symbol)
+            raise BinanceAPIError("order request timed out") from exc
+        except RequestException as exc:  # pragma: no cover - network error
+            logger.error("Binance order request error for %s: %s", symbol, exc)
+            raise BinanceAPIError(str(exc)) from exc
 
     def balance(self) -> float:
         """Return available USDT balance."""
         params = {"timestamp": int(time.time() * 1000)}
         signed = self._sign(params)
         headers = {"X-MBX-APIKEY": self.api_key}
-        response = requests.get(
-            f"{self.BASE_URL}/fapi/v2/balance", headers=headers, params=signed, timeout=10
-        )
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/fapi/v2/balance",
+                headers=headers,
+                params=signed,
+                timeout=10,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except Timeout as exc:  # pragma: no cover - network timeout
+            logger.error("Binance balance request timed out")
+            raise BinanceAPIError("balance request timed out") from exc
+        except RequestException as exc:  # pragma: no cover - network error
+            logger.error("Binance balance request error: %s", exc)
+            raise BinanceAPIError(str(exc)) from exc
         for entry in data:
             if entry.get("asset") == "USDT":
                 return float(entry.get("availableBalance", 0.0))
