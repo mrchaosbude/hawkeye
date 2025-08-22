@@ -61,7 +61,7 @@ def test_signal_change_triggers_notification(monkeypatch):
     monkeypatch.setattr(hawkeye, "users", {
         "1": {
             "notifications": True,
-            "symbols": {"ETHUSDT": {"last_signal": "buy"}},
+            "symbols": {"ETHUSDT": {"last_signal": "buy", "trade_percent": 10}},
         }
     })
 
@@ -100,6 +100,16 @@ def test_signal_change_triggers_notification(monkeypatch):
         lambda asset, bench: DummySignals("sell"),
     )
     monkeypatch.setattr(hawkeye, "save_config", lambda: None)
+    orders = []
+
+    class DummyTrader:
+        def order(self, symbol, side, qty):
+            orders.append((symbol, side, qty))
+
+        def balance(self):
+            return 1000.0
+
+    monkeypatch.setattr(hawkeye, "binance_client", DummyTrader())
 
     # Act
     hawkeye.check_price()
@@ -108,3 +118,4 @@ def test_signal_change_triggers_notification(monkeypatch):
     assert hawkeye.users["1"]["symbols"]["ETHUSDT"]["last_signal"] == "sell"
     assert len(messages) == 1
     assert "ETHUSDT" in messages[0][1]
+    assert orders == [("ETHUSDT", "SELL", 1)]
