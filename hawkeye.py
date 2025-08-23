@@ -1535,6 +1535,41 @@ def show_top10(message):
             )
 
 
+@bot.message_handler(commands=["portfolio"])
+def cmd_portfolio(message):
+    chat_id = message.chat.id
+    cfg = get_user(chat_id)
+    symbols = cfg.get("symbols", {})
+    total_sim = 0.0
+    trade_lines = []
+    for sym, data in symbols.items():
+        total_sim += data.get("sim_balance", 0.0)
+        actions = data.get("sim_actions", [])
+        if actions:
+            qty = sum(a.get("qty", 0.0) for a in actions)
+            trade_lines.append(f"{sym}: {qty:.4f}")
+    client = get_binance_client(chat_id)
+    real_balance = 0.0
+    if client:
+        try:
+            real_balance = client.balance()
+        except Exception as e:  # pragma: no cover - network error
+            logger.error("cmd_portfolio balance error: %s", e)
+    total = real_balance + total_sim
+    trades = "\n".join(trade_lines) if trade_lines else translate(chat_id, "no_data")
+    bot.reply_to(
+        message,
+        translate(
+            chat_id,
+            "portfolio_summary",
+            total=total,
+            binance=real_balance,
+            sim=total_sim,
+            trades=trades,
+        ),
+    )
+
+
 @bot.message_handler(commands=["history"])
 def show_history(message):
     parts = message.text.split()[1:]
@@ -1609,7 +1644,7 @@ def signal_command(message):
 
 MENU_SECTIONS = {
     "symbol": ("menu_section_symbol", ["menu_set", "menu_remove", "menu_percent", "menu_trail", "menu_watch"]),
-    "trading": ("menu_section_trading", ["menu_signal", "menu_autotrade", "menu_autotradesim", "menu_history", "menu_top10"]),
+    "trading": ("menu_section_trading", ["menu_signal", "menu_autotrade", "menu_autotradesim", "menu_history", "menu_top10", "menu_portfolio"]),
     "system": ("menu_section_system", ["menu_stop", "menu_start", "menu_menu", "menu_interval", "menu_summarytime", "menu_now", "menu_summary", "menu_language"]),
 }
 
