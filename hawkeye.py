@@ -103,6 +103,8 @@ def load_config() -> dict[str, Any]:
             "data_source": "binance",
             "binance_api_key": "",
             "binance_api_secret": "",
+            "auto_stop": 0.0,
+            "auto_takeprofit": 0.0,
         }
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         data = json.load(f)
@@ -112,6 +114,8 @@ def load_config() -> dict[str, Any]:
         data.setdefault("data_source", "binance")
         data.setdefault("binance_api_key", "")
         data.setdefault("binance_api_secret", "")
+        data.setdefault("auto_stop", 0.0)
+        data.setdefault("auto_takeprofit", 0.0)
         for cfg in data.get("users", {}).values():
             cfg.setdefault("binance_api_key", "")
             cfg.setdefault("binance_api_secret", "")
@@ -139,6 +143,8 @@ def save_config() -> None:
         "data_source": data_source,
         "binance_api_key": BINANCE_API_KEY,
         "binance_api_secret": BINANCE_API_SECRET,
+        "auto_stop": auto_stop,
+        "auto_takeprofit": auto_takeprofit,
     }
     # optionalen trailing_percent-Schlüssel entfernen, wenn nicht gesetzt
     for cfg in data["users"].values():
@@ -206,6 +212,8 @@ strategy_params = config.get("strategy_params", {})
 data_source = config.get("data_source", "binance")
 BINANCE_API_KEY = config.get("binance_api_key", "")
 BINANCE_API_SECRET = config.get("binance_api_secret", "")
+auto_stop = config.get("auto_stop", 0.0)
+auto_takeprofit = config.get("auto_takeprofit", 0.0)
 strategy = get_strategy(strategy_name, **strategy_params)
 binance_clients = {}
 
@@ -955,6 +963,47 @@ def check_price():
                                             side = "BUY" if signal == "buy" else "SELL"
                                             try:
                                                 client.order(sym, side, qty)
+                                                protective_side = (
+                                                    "SELL" if side == "BUY" else "BUY"
+                                                )
+                                                if auto_stop and auto_stop > 0:
+                                                    stop_price = (
+                                                        price * (1 - auto_stop / 100)
+                                                        if side == "BUY"
+                                                        else price * (1 + auto_stop / 100)
+                                                    )
+                                                    try:
+                                                        client.place_protective_order(
+                                                            sym,
+                                                            protective_side,
+                                                            qty,
+                                                            stop_price,
+                                                        )
+                                                    except Exception as exc:
+                                                        logger.error(
+                                                            "auto stop order error for %s: %s",
+                                                            sym,
+                                                            exc,
+                                                        )
+                                                if auto_takeprofit and auto_takeprofit > 0:
+                                                    tp_price = (
+                                                        price * (1 + auto_takeprofit / 100)
+                                                        if side == "BUY"
+                                                        else price * (1 - auto_takeprofit / 100)
+                                                    )
+                                                    try:
+                                                        client.place_protective_order(
+                                                            sym,
+                                                            protective_side,
+                                                            qty,
+                                                            tp_price,
+                                                        )
+                                                    except Exception as exc:
+                                                        logger.error(
+                                                            "auto take-profit order error for %s: %s",
+                                                            sym,
+                                                            exc,
+                                                        )
                                             except Exception as exc:
                                                 logger.error("order error for %s: %s", sym, exc)
                 except Exception as e:
