@@ -1597,18 +1597,26 @@ def show_history(message):
 def backtest_command(message):
     parts = message.text.split()[1:]
     if len(parts) != 3:
-        bot.reply_to(message, "Usage: /backtest SYMBOL START END")
+        bot.reply_to(message, translate(message.chat.id, "usage_backtest"))
         return
     symbol, start, end = parts[0].upper(), parts[1], parts[2]
     try:
         roi, drawdown = run_backtest(symbol, start, end)
         bot.reply_to(
             message,
-            f"{symbol}: ROI {roi:.2%}, Max Drawdown {drawdown:.2%}",
+            translate(
+                message.chat.id,
+                "backtest_result",
+                symbol=symbol,
+                roi=roi * 100,
+                drawdown=drawdown * 100,
+            ),
         )
     except Exception as e:  # pragma: no cover - broad exception for user input
         logger.error("backtest command error for %s: %s", symbol, e)
-        bot.reply_to(message, f"Backtest failed for {symbol}")
+        bot.reply_to(
+            message, translate(message.chat.id, "backtest_error", symbol=symbol)
+        )
 
 @bot.message_handler(commands=["signal"])
 def signal_command(message):
@@ -1644,8 +1652,31 @@ def signal_command(message):
 
 MENU_SECTIONS = {
     "symbol": ("menu_section_symbol", ["menu_set", "menu_remove", "menu_percent", "menu_trail", "menu_watch"]),
-    "trading": ("menu_section_trading", ["menu_signal", "menu_autotrade", "menu_autotradesim", "menu_history", "menu_top10", "menu_portfolio"]),
-    "system": ("menu_section_system", ["menu_stop", "menu_start", "menu_menu", "menu_interval", "menu_summarytime", "menu_now", "menu_summary", "menu_language"]),
+    "trading": (
+        "menu_section_trading",
+        [
+            "menu_signal",
+            "menu_autotrade",
+            "menu_autotradesim",
+            "menu_history",
+            "menu_backtest",
+            "menu_top10",
+            "menu_portfolio",
+        ],
+    ),
+    "system": (
+        "menu_section_system",
+        [
+            "menu_stop",
+            "menu_start",
+            "menu_menu",
+            "menu_interval",
+            "menu_summarytime",
+            "menu_now",
+            "menu_summary",
+            "menu_language",
+        ],
+    ),
 }
 
 @bot.message_handler(commands=["menu", "help"])

@@ -70,6 +70,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
   (Candlestick-Daten werden täglich in `cache.db` gespeichert; aktuelle Preise werden live geladen)
 - `/signal SYMBOL BENCHMARK` – Berechnet Score und Signal für `SYMBOL` relativ zur `BENCHMARK`
+- `/backtest SYMBOL START ENDE` – Führt einen Strategie-Backtest für `SYMBOL` zwischen START und ENDE (YYYY-MM-DD) aus
 
 Beim automatischen Handel nutzt der Bot pro Symbol nur den festgelegten
 Betrag bzw. Prozentsatz des Guthabens. Über `/autotradelimit` kannst du
