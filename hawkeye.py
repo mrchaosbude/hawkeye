@@ -25,7 +25,7 @@ from datetime import datetime
 import logging
 import pandas as pd
 from strategies import get_strategy
-from binance_client import BinanceClient
+from binance_client import BinanceClient, BinanceWebSocketClient
 from autotrade_simulation import simulate_autotrade
 from backtest import run_backtest
 
@@ -218,6 +218,13 @@ auto_stop = config.get("auto_stop", 0.0)
 auto_takeprofit = config.get("auto_takeprofit", 0.0)
 strategy = get_strategy(strategy_name, **strategy_params)
 binance_clients = {}
+
+ws_client = None
+try:
+    _symbols = {sym for cfg in users.values() for sym in cfg.get("symbols", {})}
+    ws_client = BinanceWebSocketClient(list(_symbols)) if _symbols else None
+except Exception as exc:  # pragma: no cover - websocket optional
+    logger.warning("WebSocket client init failed: %s", exc)
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
@@ -820,7 +827,13 @@ def check_price():
         if not cfg.get("notifications", True):
             continue
         for sym, data in cfg.get("symbols", {}).items():
-            price = get_price(sym)
+            price = None
+            if ws_client:
+                ws_client.subscribe(sym)
+                if ws_client.connected:
+                    price = ws_client.get_price(sym)
+            if price is None:
+                price = get_price(sym)
             if price:
                 sl = data.get("stop_loss")
                 tp = data.get("take_profit")

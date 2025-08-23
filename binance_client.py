@@ -2,6 +2,8 @@ import hmac
 import hashlib
 import logging
 import time
+import threading
+import json
 from urllib.parse import urlencode
 
 import requests
@@ -152,3 +154,108 @@ class BinanceClient:
             if entry.get("asset") == "USDT":
                 return float(entry.get("availableBalance", 0.0))
         return 0.0
+
+
+try:  # pragma: no cover - optional dependency
+    import websocket
+except Exception:  # pragma: no cover - allow running without websocket-client
+    websocket = None
+
+
+class BinanceWebSocketClient:
+    """Lightweight Binance WebSocket client for ticker updates.
+
+    Prices received from the Binance futures WebSocket are stored in-memory
+    and can be retrieved via :meth:`get_price`.
+    """
+
+    STREAM_URL = "wss://fstream.binance.com/ws"
+
+    def __init__(self, symbols: list[str] | None = None) -> None:
+        self.symbols = [s.lower() for s in (symbols or [])]
+        self._prices: dict[str, float] = {}
+        self._lock = threading.Lock()
+        self.connected = False
+        self._ws: websocket.WebSocketApp | None = None
+        if websocket is not None:
+            self._connect()
+        else:  # pragma: no cover - when websocket-client isn't installed
+            logger.warning("websocket-client library not available")
+
+    def _connect(self) -> None:
+        """Establish WebSocket connection and subscribe to streams."""
+
+        def on_open(ws: websocket.WebSocketApp) -> None:
+            self.connected = True
+            if self.symbols:
+                params = [f"{s}@ticker" for s in self.symbols]
+                ws.send(
+                    json.dumps(
+                        {"method": "SUBSCRIBE", "params": params, "id": int(time.time())}
+                    )
+                )
+
+        def on_message(ws: websocket.WebSocketApp, message: str) -> None:
+            try:
+                data = json.loads(message)
+                if "stream" in data and "data" in data:
+                    data = data["data"]
+                symbol = data.get("s")
+                price = data.get("c")
+                if symbol and price:
+                    with self._lock:
+                        self._prices[symbol.upper()] = float(price)
+            except Exception as exc:  # pragma: no cover - unexpected payloads
+                logger.error("WebSocket message error: %s", exc)
+
+        def on_error(ws: websocket.WebSocketApp, error: Exception) -> None:
+            logger.error("WebSocket error: %s", error)
+
+        def on_close(
+            ws: websocket.WebSocketApp, close_status_code: int, close_msg: str
+        ) -> None:
+            self.connected = False
+            logger.warning(
+                "WebSocket closed: %s %s. Reconnecting...", close_status_code, close_msg
+            )
+            self._schedule_reconnect()
+
+        self._ws = websocket.WebSocketApp(
+            self.STREAM_URL,
+            on_open=on_open,
+            on_message=on_message,
+            on_error=on_error,
+            on_close=on_close,
+        )
+        threading.Thread(target=self._ws.run_forever, daemon=True).start()
+
+    def _schedule_reconnect(self) -> None:
+        """Attempt to reconnect after a short delay."""
+
+        def runner() -> None:
+            time.sleep(5)
+            if websocket is not None:
+                self._connect()
+
+        threading.Thread(target=runner, daemon=True).start()
+
+    def subscribe(self, symbol: str) -> None:
+        """Subscribe to ticker updates for ``symbol``."""
+        sym = symbol.lower()
+        if sym in self.symbols:
+            return
+        self.symbols.append(sym)
+        if self.connected and self._ws:
+            try:
+                self._ws.send(
+                    json.dumps(
+                        {"method": "SUBSCRIBE", "params": [f"{sym}@ticker"], "id": 1}
+                    )
+                )
+            except Exception as exc:  # pragma: no cover - network send error
+                logger.error("WebSocket subscribe error for %s: %s", sym, exc)
+
+    def get_price(self, symbol: str) -> float | None:
+        """Return last received price for ``symbol``."""
+        with self._lock:
+            return self._prices.get(symbol.upper())
