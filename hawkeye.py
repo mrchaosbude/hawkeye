@@ -1,5 +1,6 @@
 import os
 import json
+import configparser
 import requests
 import telebot
 from telebot.apihelper import ApiException
@@ -42,6 +43,17 @@ CONFIG_FILE = "config.json"
 COINGECKO_MARKETS_URL = "https://api.coingecko.com/api/v3/coins/markets"
 DB_FILE = "cache.db"
 I18N_DIR = "i18n"
+
+KNOWN_QUOTES = ("USDT", "BUSD", "USDC", "DAI")
+
+_cfg_parser = configparser.ConfigParser()
+DEFAULT_QUOTE = os.environ.get("DEFAULT_QUOTE")
+if not DEFAULT_QUOTE:
+    if _cfg_parser.read("config.ini"):
+        DEFAULT_QUOTE = _cfg_parser.get("binance", "default_quote", fallback="USDT")
+    else:
+        DEFAULT_QUOTE = "USDT"
+DEFAULT_QUOTE = DEFAULT_QUOTE.upper()
 
 def fetch_json(url, params=None, timeout=10, max_retries=3, backoff_factor=1.0):
     """Perform a GET request and return parsed JSON.
@@ -556,9 +568,22 @@ BINANCE_PAIR_EXCEPTIONS = {
 }
 
 
-def to_binance_pair(symbol: str):
-    symbol = symbol.upper()
-    return BINANCE_PAIR_EXCEPTIONS.get(symbol, f"{symbol}USDT")
+def normalize_symbol(symbol: str) -> str | None:
+    """Normalize asset symbols to Binance trading pairs."""
+    if not symbol:
+        return None
+    sym = symbol.upper()
+    if sym in BINANCE_PAIR_EXCEPTIONS:
+        result = BINANCE_PAIR_EXCEPTIONS[sym]
+        logger.debug("normalize_symbol %s -> %s", sym, result)
+        return result
+    for quote in KNOWN_QUOTES:
+        if sym.endswith(quote):
+            logger.debug("normalize_symbol %s -> %s", sym, sym)
+            return sym
+    result = f"{sym}{DEFAULT_QUOTE}"
+    logger.debug("normalize_symbol %s -> %s", sym, result)
+    return result
 
 
 def generate_binance_candlestick(pair):
@@ -822,18 +847,22 @@ def record_simulated_trade(cfg, side, price, qty):
 
 # === FUNKTIONEN: Checks ===
 def check_price():
-    benchmark = get_daily_ohlcv("BTCUSDT")
+    benchmark = get_daily_ohlcv(normalize_symbol("BTCUSDT"))
     for cid, cfg in users.items():
         if not cfg.get("notifications", True):
             continue
         for sym, data in cfg.get("symbols", {}).items():
+            pair = normalize_symbol(sym)
+            if not pair:
+                logger.info("No Binance pair for %s", sym)
+                continue
             price = None
             if ws_client:
-                ws_client.subscribe(sym)
+                ws_client.subscribe(pair)
                 if ws_client.connected:
-                    price = ws_client.get_price(sym)
+                    price = ws_client.get_price(pair)
             if price is None:
-                price = get_price(sym)
+                price = get_price(pair)
             if price:
                 sl = data.get("stop_loss")
                 tp = data.get("take_profit")
@@ -849,7 +878,7 @@ def check_price():
                             translate(
                                 cid,
                                 "trailing_init",
-                                symbol=sym,
+                                symbol=pair,
                                 sl=f"{sl:.2f}",
                                 percent=trailing,
                             ),
@@ -863,7 +892,7 @@ def check_price():
                             translate(
                                 cid,
                                 "trailing_raise",
-                                symbol=sym,
+                                symbol=pair,
                                 sl=f"{sl:.2f}",
                                 percent=trailing,
                             ),
@@ -874,15 +903,15 @@ def check_price():
                             cid,
                             "trailing_stop_reached",
                             price=price,
-                            symbol=sym,
+                            symbol=pair,
                         )
                         if trailing is not None
                         else translate(
-                            cid, "stop_loss_reached", price=price, symbol=sym
+                            cid, "stop_loss_reached", price=price, symbol=pair
                         )
                     )
                     bot.send_message(cid, msg)
-                    chart = generate_buy_sell_chart(sym)
+                    chart = generate_buy_sell_chart(pair)
                     if chart:
                         bot.send_photo(cid, chart)
                 elif tp is not None and tp > 0 and price >= tp:
@@ -892,10 +921,10 @@ def check_price():
                             cid,
                             "take_profit_reached",
                             price=price,
-                            symbol=sym,
+                            symbol=pair,
                         ),
                     )
-                    chart = generate_buy_sell_chart(sym)
+                    chart = generate_buy_sell_chart(pair)
                     if chart:
                         bot.send_photo(cid, chart)
                 percent = data.get("percent")
@@ -913,7 +942,7 @@ def check_price():
                             translate(
                                 cid,
                                 "price_change",
-                                symbol=sym,
+                                symbol=pair,
                                 base=f"{base_price:.2f}",
                                 price=f"{price:.2f}",
                                 direction=direction,
@@ -921,7 +950,7 @@ def check_price():
                                 percent=percent,
                             ),
                         )
-                        chart = generate_buy_sell_chart(sym)
+                        chart = generate_buy_sell_chart(pair)
                         if chart:
                             bot.send_photo(cid, chart)
                         data["base_price"] = price
@@ -929,7 +958,7 @@ def check_price():
 
                 # Signal-Änderungen überwachen
                 try:
-                    asset = get_daily_ohlcv(sym)
+                    asset = get_daily_ohlcv(pair)
                     if asset is not None and benchmark is not None:
                         sigs = strategy.generate_signals(asset, benchmark)
                         signal = sigs.iloc[-1]["Signal"]
@@ -941,7 +970,7 @@ def check_price():
                                     translate(
                                         cid,
                                         "signal_changed",
-                                        symbol=sym,
+                                        symbol=pair,
                                         old=translate(cid, f"signal_{last_signal}"),
                                         new=translate(cid, f"signal_{signal}"),
                                     ),
@@ -950,7 +979,7 @@ def check_price():
                             save_config()
                             client = get_binance_client(cid)
                             if signal in ("buy", "sell"):
-                                price = get_price(sym)
+                                price = get_price(pair)
                                 if not price:
                                     continue
                                 is_sim = data.get("sim_start") is not None
@@ -994,35 +1023,35 @@ def check_price():
                                         bot.send_message(cid, msg)
                                     elif client:
                                         try:
-                                            client.order(sym, "BUY", qty)
+                                            client.order(pair, "BUY", qty)
                                             data["position"] = current_pos + qty
                                             save_config()
                                             if auto_stop and auto_stop > 0:
                                                 stop_price = price * (1 - auto_stop / 100)
                                                 try:
                                                     client.place_protective_order(
-                                                        sym, "SELL", qty, stop_price
+                                                        pair, "SELL", qty, stop_price
                                                     )
                                                 except Exception as exc:
                                                     logger.error(
                                                         "auto stop order error for %s: %s",
-                                                        sym,
+                                                        pair,
                                                         exc,
                                                     )
                                             if auto_takeprofit and auto_takeprofit > 0:
                                                 tp_price = price * (1 + auto_takeprofit / 100)
                                                 try:
                                                     client.place_protective_order(
-                                                        sym, "SELL", qty, tp_price
+                                                        pair, "SELL", qty, tp_price
                                                     )
                                                 except Exception as exc:
                                                     logger.error(
                                                         "auto take-profit order error for %s: %s",
-                                                        sym,
+                                                        pair,
                                                         exc,
                                                     )
                                         except Exception as exc:
-                                            logger.error("order error for %s: %s", sym, exc)
+                                            logger.error("order error for %s: %s", pair, exc)
                                 else:  # sell
                                     if current_pos <= 0:
                                         continue
@@ -1032,35 +1061,35 @@ def check_price():
                                         bot.send_message(cid, msg)
                                     elif client:
                                         try:
-                                            client.order(sym, "SELL", qty)
+                                            client.order(pair, "SELL", qty)
                                             data["position"] = max(0.0, current_pos - qty)
                                             save_config()
                                             if auto_stop and auto_stop > 0:
                                                 stop_price = price * (1 + auto_stop / 100)
                                                 try:
                                                     client.place_protective_order(
-                                                        sym, "BUY", qty, stop_price
+                                                        pair, "BUY", qty, stop_price
                                                     )
                                                 except Exception as exc:
                                                     logger.error(
                                                         "auto stop order error for %s: %s",
-                                                        sym,
+                                                        pair,
                                                         exc,
                                                     )
                                             if auto_takeprofit and auto_takeprofit > 0:
                                                 tp_price = price * (1 - auto_takeprofit / 100)
                                                 try:
                                                     client.place_protective_order(
-                                                        sym, "BUY", qty, tp_price
+                                                        pair, "BUY", qty, tp_price
                                                     )
                                                 except Exception as exc:
                                                     logger.error(
                                                         "auto take-profit order error for %s: %s",
-                                                        sym,
+                                                        pair,
                                                         exc,
                                                     )
                                         except Exception as exc:
-                                            logger.error("order error for %s: %s", sym, exc)
+                                            logger.error("order error for %s: %s", pair, exc)
                 except Exception as e:
                     logger.error("check_price signal error for %s: %s", sym, e)
 
@@ -1096,21 +1125,30 @@ def send_daily_summary(chat_id=None):
             continue
         lines = [translate(cid, "daily_summary_header")]
         for sym in symbols:
+            pair = normalize_symbol(sym)
+            if not pair:
+                logger.info("No Binance pair for %s", sym)
+                lines.append(
+                    translate(cid, "price_not_available", symbol=sym)
+                )
+                continue
             data = fetch_json(
                 "https://fapi.binance.com/fapi/v1/ticker/24hr",
-                params={"symbol": sym},
+                params={"symbol": pair},
             )
             if data:
                 try:
                     price = float(data.get("lastPrice"))
                     change = float(data.get("priceChangePercent"))
-                    lines.append(f"{sym}: {price:.2f} ({change:+.2f}%)")
+                    lines.append(f"{pair}: {price:.2f} ({change:+.2f}%)")
                 except (TypeError, ValueError):
                     lines.append(
-                        translate(cid, "price_not_available", symbol=sym)
+                        translate(cid, "price_not_available", symbol=pair)
                     )
             else:
-                lines.append(translate(cid, "price_not_available", symbol=sym))
+                lines.append(
+                    translate(cid, "price_not_available", symbol=pair)
+                )
         bot.send_message(cid, "\n".join(lines))
 
 
@@ -1319,8 +1357,14 @@ def set_percent_command(message):
         bot.reply_to(message, translate(message.chat.id, "percent_nan"))
         return
     symbol_upper = symbol.upper()
+    pair = normalize_symbol(symbol_upper)
+    if not pair:
+        bot.reply_to(
+            message, translate(message.chat.id, "price_fetch_error", symbol=symbol_upper)
+        )
+        return
     symbols = cfg.setdefault("symbols", {})
-    if symbol_upper not in symbols and len(symbols) >= cfg.get("max_symbols", 5):
+    if pair not in symbols and len(symbols) >= cfg.get("max_symbols", 5):
         bot.reply_to(
             message,
             translate(
@@ -1330,13 +1374,13 @@ def set_percent_command(message):
             ),
         )
         return
-    price = get_price(symbol_upper)
+    price = get_price(pair)
     if price is None:
         bot.reply_to(
-            message, translate(message.chat.id, "price_fetch_error", symbol=symbol_upper)
+            message, translate(message.chat.id, "price_fetch_error", symbol=pair)
         )
         return
-    entry = symbols.setdefault(symbol_upper, {})
+    entry = symbols.setdefault(pair, {})
     entry["percent"] = percent
     entry["base_price"] = price
     save_config()
@@ -1345,7 +1389,7 @@ def set_percent_command(message):
         translate(
             message.chat.id,
             "percent_set",
-            symbol=symbol_upper,
+            symbol=pair,
             percent=percent,
             price=price,
         ),
@@ -1361,10 +1405,14 @@ def set_trailing_command(message):
         bot.reply_to(message, translate(message.chat.id, "usage_trail"))
         return
     symbol = parts[0].upper()
+    pair = normalize_symbol(symbol)
+    if not pair:
+        bot.reply_to(message, translate(message.chat.id, "price_fetch_error", symbol=symbol))
+        return
     symbols = cfg.setdefault("symbols", {})
     if (
         len(parts) > 1
-        and symbol not in symbols
+        and pair not in symbols
         and len(symbols) >= cfg.get("max_symbols", 5)
     ):
         bot.reply_to(
@@ -1376,12 +1424,12 @@ def set_trailing_command(message):
             ),
         )
         return
-    entry = symbols.setdefault(symbol, {})
+    entry = symbols.setdefault(pair, {})
     if len(parts) == 1:
         entry.pop("trailing_percent", None)
         save_config()
         bot.reply_to(
-            message, translate(message.chat.id, "trailing_removed", symbol=symbol)
+            message, translate(message.chat.id, "trailing_removed", symbol=pair)
         )
         return
     try:
@@ -1393,11 +1441,11 @@ def set_trailing_command(message):
         entry.pop("trailing_percent", None)
         save_config()
         bot.reply_to(
-            message, translate(message.chat.id, "trailing_removed", symbol=symbol)
+            message, translate(message.chat.id, "trailing_removed", symbol=pair)
         )
         return
     entry["trailing_percent"] = percent
-    price = get_price(symbol)
+    price = get_price(pair)
     if price is not None:
         sl = price * (1 - percent / 100)
         entry["stop_loss"] = sl
@@ -1408,7 +1456,7 @@ def set_trailing_command(message):
                 message.chat.id,
                 "trailing_set_sl",
                 percent=percent,
-                symbol=symbol,
+                symbol=pair,
                 sl=f"{sl:.2f}",
             ),
         )
@@ -1420,7 +1468,7 @@ def set_trailing_command(message):
                 message.chat.id,
                 "trailing_set",
                 percent=percent,
-                symbol=symbol,
+                symbol=pair,
             ),
         )
 
@@ -1498,13 +1546,19 @@ def show_current_prices(message):
         return
     lines = [translate(message.chat.id, "current_prices_header")]
     for sym in symbols:
-        price = get_price(sym)
-        if price is None:
+        pair = normalize_symbol(sym)
+        if not pair:
             lines.append(
                 translate(message.chat.id, "price_not_available", symbol=sym)
             )
+            continue
+        price = get_price(pair)
+        if price is None:
+            lines.append(
+                translate(message.chat.id, "price_not_available", symbol=pair)
+            )
         else:
-            lines.append(f"{sym}: {price}")
+            lines.append(f"{pair}: {price}")
     bot.reply_to(message, "\n".join(lines))
 
 
@@ -1535,7 +1589,7 @@ def show_top10(message):
         )
         chart = generate_cached_candle_chart(symbol)
         if not chart:
-            pair = to_binance_pair(symbol)
+            pair = normalize_symbol(symbol)
             if pair:
                 chart = generate_binance_candlestick(pair)
             else:
@@ -1590,7 +1644,7 @@ def show_history(message):
         bot.reply_to(message, translate(message.chat.id, "usage_history"))
         return
     symbol = parts[0].upper()
-    pair = to_binance_pair(symbol)
+    pair = normalize_symbol(symbol)
     if not pair:
         logger.info("No Binance pair for %s", symbol)
         bot.reply_to(
@@ -1599,7 +1653,7 @@ def show_history(message):
         return
     chart = generate_binance_candlestick(pair)
     if chart:
-        bot.send_photo(message.chat.id, chart, caption=symbol)
+        bot.send_photo(message.chat.id, chart, caption=pair)
     else:
         bot.reply_to(
             message, translate(message.chat.id, "history_error", symbol=symbol)
@@ -1639,8 +1693,10 @@ def signal_command(message):
         return
     symbol = parts[0].upper()
     benchmark = parts[1].upper() if len(parts) == 2 else "BTCUSDT"
-    asset = get_daily_ohlcv(symbol)
-    bench = get_daily_ohlcv(benchmark)
+    sym_pair = normalize_symbol(symbol)
+    bench_pair = normalize_symbol(benchmark)
+    asset = get_daily_ohlcv(sym_pair)
+    bench = get_daily_ohlcv(bench_pair)
     if asset is None or bench is None:
         bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
         return
@@ -1653,13 +1709,13 @@ def signal_command(message):
             translate(
                 message.chat.id,
                 "signal_result",
-                symbol=symbol,
+                symbol=sym_pair,
                 score=f"{last['Score']:.1f}",
                 signal=sig_text,
             ),
         )
     except Exception as e:
-        logger.error("signal_command error for %s: %s", symbol, e)
+        logger.error("signal_command error for %s: %s", sym_pair, e)
         bot.reply_to(message, translate(message.chat.id, "signal_error", symbol=symbol))
 
 
