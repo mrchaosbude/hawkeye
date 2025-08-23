@@ -20,13 +20,13 @@ def test_orders_use_user_specific_binance_clients(monkeypatch):
             "notifications": True,
             "binance_api_key": "k1",
             "binance_api_secret": "s1",
-            "symbols": {"BTCUSDT": {"trade_amount": 100.0}},
+            "symbols": {"BTCUSDT": {"trade_amount": 100.0, "position": 1.0}},
         },
         "2": {
             "notifications": True,
             "binance_api_key": "k2",
             "binance_api_secret": "s2",
-            "symbols": {"ETHUSDT": {"trade_amount": 200.0}},
+            "symbols": {"ETHUSDT": {"trade_amount": 200.0, "position": 2.0}},
         },
     }
 

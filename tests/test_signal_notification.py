@@ -61,7 +61,7 @@ def test_signal_change_triggers_notification(monkeypatch):
     monkeypatch.setattr(hawkeye, "users", {
         "1": {
             "notifications": True,
-            "symbols": {"ETHUSDT": {"last_signal": "buy", "trade_percent": 10}},
+            "symbols": {"ETHUSDT": {"last_signal": "buy", "trade_percent": 10, "position": 1}},
         }
     })
 

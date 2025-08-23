@@ -159,6 +159,8 @@ def save_config() -> None:
                 sym_cfg.pop("trade_amount", None)
             if sym_cfg.get("quantity", 0.0) == 0.0:
                 sym_cfg.pop("quantity", None)
+            if sym_cfg.get("position", 0.0) == 0.0:
+                sym_cfg.pop("position", None)
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
 
@@ -311,6 +313,7 @@ def get_user(chat_id):
         sym_cfg.setdefault("quantity", 0.0)
         sym_cfg.setdefault("trade_amount", 0.0)
         sym_cfg.setdefault("trade_percent", None)
+        sym_cfg.setdefault("position", 0.0)
     users[cid].setdefault("language", "de")
     users[cid].setdefault("role", "user")
     users[cid].setdefault("max_symbols", 5)
@@ -934,78 +937,117 @@ def check_price():
                             save_config()
                             client = get_binance_client(cid)
                             if signal in ("buy", "sell"):
+                                price = get_price(sym)
+                                if not price:
+                                    continue
+                                is_sim = data.get("sim_start") is not None
+                                current_pos = data.get(
+                                    "sim_position" if is_sim else "position", 0.0
+                                )
                                 amt = data.get("trade_amount", 0.0)
                                 pct = data.get("trade_percent")
-                                qty = 0.0
-                                price = get_price(sym)
-                                if price:
-                                    if data.get("sim_start") is not None:
-                                        if pct and pct > 0:
-                                            qty = data.get("sim_balance", data["sim_start"]) * pct / 100 / price
-                                        elif amt > 0:
-                                            qty = amt / price
-                                        elif data.get("quantity", 0.0) > 0:
-                                            qty = data["quantity"]
-                                        if qty > 0:
-                                            side = "BUY" if signal == "buy" else "SELL"
-                                            msg = record_simulated_trade(data, side, price, qty)
-                                            bot.send_message(cid, msg)
+                                max_pct = data.get("max_percent")
+                                balance = (
+                                    data.get("sim_balance", data["sim_start"])
+                                    if is_sim
+                                    else client.balance() if client else 0.0
+                                )
+                                position_val = current_pos * price
+                                equity = balance + position_val
+                                if signal == "buy":
+                                    if max_pct:
+                                        max_val = equity * max_pct / 100
+                                        allowed_val = max_val - position_val
+                                        if allowed_val <= 0 or balance <= 0:
+                                            continue
+                                    else:
+                                        if current_pos > 0:
+                                            continue
+                                        allowed_val = balance
+                                    if pct and pct > 0:
+                                        qty = balance * pct / 100 / price
+                                    elif amt > 0:
+                                        qty = amt / price
+                                    elif data.get("quantity", 0.0) > 0:
+                                        qty = data["quantity"]
+                                    else:
+                                        qty = 0.0
+                                    if max_pct:
+                                        qty = min(qty, allowed_val / price)
+                                    if qty <= 0:
+                                        continue
+                                    if is_sim:
+                                        msg = record_simulated_trade(data, "BUY", price, qty)
+                                        bot.send_message(cid, msg)
                                     elif client:
-                                        if amt > 0 or (pct and pct > 0):
-                                            if pct and pct > 0:
-                                                balance = client.balance()
-                                                qty = balance * pct / 100 / price
-                                            else:
-                                                qty = amt / price
-                                        elif data.get("quantity", 0.0) > 0:
-                                            qty = data["quantity"]
-                                        if qty > 0:
-                                            side = "BUY" if signal == "buy" else "SELL"
-                                            try:
-                                                client.order(sym, side, qty)
-                                                protective_side = (
-                                                    "SELL" if side == "BUY" else "BUY"
-                                                )
-                                                if auto_stop and auto_stop > 0:
-                                                    stop_price = (
-                                                        price * (1 - auto_stop / 100)
-                                                        if side == "BUY"
-                                                        else price * (1 + auto_stop / 100)
+                                        try:
+                                            client.order(sym, "BUY", qty)
+                                            data["position"] = current_pos + qty
+                                            save_config()
+                                            if auto_stop and auto_stop > 0:
+                                                stop_price = price * (1 - auto_stop / 100)
+                                                try:
+                                                    client.place_protective_order(
+                                                        sym, "SELL", qty, stop_price
                                                     )
-                                                    try:
-                                                        client.place_protective_order(
-                                                            sym,
-                                                            protective_side,
-                                                            qty,
-                                                            stop_price,
-                                                        )
-                                                    except Exception as exc:
-                                                        logger.error(
-                                                            "auto stop order error for %s: %s",
-                                                            sym,
-                                                            exc,
-                                                        )
-                                                if auto_takeprofit and auto_takeprofit > 0:
-                                                    tp_price = (
-                                                        price * (1 + auto_takeprofit / 100)
-                                                        if side == "BUY"
-                                                        else price * (1 - auto_takeprofit / 100)
+                                                except Exception as exc:
+                                                    logger.error(
+                                                        "auto stop order error for %s: %s",
+                                                        sym,
+                                                        exc,
                                                     )
-                                                    try:
-                                                        client.place_protective_order(
-                                                            sym,
-                                                            protective_side,
-                                                            qty,
-                                                            tp_price,
-                                                        )
-                                                    except Exception as exc:
-                                                        logger.error(
-                                                            "auto take-profit order error for %s: %s",
-                                                            sym,
-                                                            exc,
-                                                        )
-                                            except Exception as exc:
-                                                logger.error("order error for %s: %s", sym, exc)
+                                            if auto_takeprofit and auto_takeprofit > 0:
+                                                tp_price = price * (1 + auto_takeprofit / 100)
+                                                try:
+                                                    client.place_protective_order(
+                                                        sym, "SELL", qty, tp_price
+                                                    )
+                                                except Exception as exc:
+                                                    logger.error(
+                                                        "auto take-profit order error for %s: %s",
+                                                        sym,
+                                                        exc,
+                                                    )
+                                        except Exception as exc:
+                                            logger.error("order error for %s: %s", sym, exc)
+                                else:  # sell
+                                    if current_pos <= 0:
+                                        continue
+                                    qty = current_pos
+                                    if is_sim:
+                                        msg = record_simulated_trade(data, "SELL", price, qty)
+                                        bot.send_message(cid, msg)
+                                    elif client:
+                                        try:
+                                            client.order(sym, "SELL", qty)
+                                            data["position"] = max(0.0, current_pos - qty)
+                                            save_config()
+                                            if auto_stop and auto_stop > 0:
+                                                stop_price = price * (1 + auto_stop / 100)
+                                                try:
+                                                    client.place_protective_order(
+                                                        sym, "BUY", qty, stop_price
+                                                    )
+                                                except Exception as exc:
+                                                    logger.error(
+                                                        "auto stop order error for %s: %s",
+                                                        sym,
+                                                        exc,
+                                                    )
+                                            if auto_takeprofit and auto_takeprofit > 0:
+                                                tp_price = price * (1 - auto_takeprofit / 100)
+                                                try:
+                                                    client.place_protective_order(
+                                                        sym, "BUY", qty, tp_price
+                                                    )
+                                                except Exception as exc:
+                                                    logger.error(
+                                                        "auto take-profit order error for %s: %s",
+                                                        sym,
+                                                        exc,
+                                                    )
+                                        except Exception as exc:
+                                            logger.error("order error for %s: %s", sym, exc)
                 except Exception as e:
                     logger.error("check_price signal error for %s: %s", sym, e)
 
@@ -1154,6 +1196,34 @@ def autotrade_command(message):
     bot.reply_to(
         message,
         translate(message.chat.id, "autotrade_set", symbol=symbol, qty=qty_str),
+    )
+
+
+@bot.message_handler(commands=["autotradelimit"])
+def autotradelimit_command(message):
+    """Set maximum portfolio percentage to allocate for a symbol."""
+    cfg = get_user(message.chat.id)
+    parts = message.text.split()[1:]
+    if len(parts) != 2 or not parts[1].endswith("%"):
+        bot.reply_to(message, translate(message.chat.id, "usage_autotradelimit"))
+        return
+    symbol, pct_str = parts[0].upper(), parts[1]
+    try:
+        percent = float(pct_str[:-1])
+    except ValueError:
+        bot.reply_to(message, translate(message.chat.id, "autotradelimit_nan"))
+        return
+    sym_cfg = cfg.setdefault("symbols", {}).setdefault(symbol, {})
+    sym_cfg["max_percent"] = percent
+    save_config()
+    bot.reply_to(
+        message,
+        translate(
+            message.chat.id,
+            "autotradelimit_set",
+            symbol=symbol,
+            percent=percent,
+        ),
     )
 
 
@@ -1577,10 +1647,13 @@ def show_menu(message):
                 line += translate(message.chat.id, "symbol_config_percent", percent=data["percent"], base=data.get("base_price"))
             amt = data.get("trade_amount", 0.0)
             pct = data.get("trade_percent")
+            max_pct = data.get("max_percent")
             if amt > 0:
                 line += translate(message.chat.id, "symbol_config_trade_amount", amount=amt)
             if pct:
                 line += translate(message.chat.id, "symbol_config_trade_percent", percent=pct)
+            if max_pct:
+                line += translate(message.chat.id, "symbol_config_max_percent", percent=max_pct)
             qty = data.get("quantity", 0.0)
             if qty > 0:
                 line += translate(message.chat.id, "symbol_config_quantity", qty=qty)

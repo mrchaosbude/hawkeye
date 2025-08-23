@@ -57,6 +57,7 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/watch SYMBOL` – Symbol für automatische Signaländerungen beobachten
 - `/autotrade <SYMBOL> <AMOUNT|PERCENT%>` – Automatischer Handel für SYMBOL mit fixem Betrag oder Prozent des Guthabens
 - `/autotradesim <START_BALANCE> <SYMBOL> <AMOUNT|PERCENT%>` – Simulation des automatischen Handels mit Startguthaben
+- `/autotradelimit <SYMBOL> <PERCENT%>` – Maximale Portfolio-Quote pro Symbol festlegen
 - `/remove SYMBOL` – Symbol entfernen
 - `/percent SYMBOL PROZENT` – Benachrichtigung bei ±PROZENT Preisänderung
 - `/stop` – Benachrichtigungen deaktivieren
@@ -69,6 +70,13 @@ Im Chat mit deinem Bot stehen folgende Befehle zur Verfügung:
 - `/top10` – Top 10 Kryptowährungen mit Preis, 24h-Änderung und Candlestick-Chart
   (Candlestick-Daten werden täglich in `cache.db` gespeichert; aktuelle Preise werden live geladen)
 - `/signal SYMBOL BENCHMARK` – Berechnet Score und Signal für `SYMBOL` relativ zur `BENCHMARK`
+
+Beim automatischen Handel nutzt der Bot pro Symbol nur den festgelegten
+Betrag bzw. Prozentsatz des Guthabens. Über `/autotradelimit` kannst du
+zusätzlich eine maximale Quote deines Portfolios festlegen, die in ein
+Symbol investiert werden darf. Weitere Kaufsignale werden ignoriert,
+sobald dieses Limit erreicht ist. Erst ein Verkaufssignal schließt die
+Position und gibt den Einsatz wieder frei.
 
 ## Beispiel: Trading-Signale
 
