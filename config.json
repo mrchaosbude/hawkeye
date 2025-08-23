@@ -15,5 +15,7 @@
   },
   "data_source": "binance",
   "binance_api_key": "",
-  "binance_api_secret": ""
+  "binance_api_secret": "",
+  "auto_stop": 0.0,
+  "auto_takeprofit": 0.0
 }

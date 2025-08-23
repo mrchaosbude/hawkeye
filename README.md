@@ -38,7 +38,9 @@ pip install requests telebot schedule matplotlib mplfinance
      "strategy_params": {
        "symbol": "BTCUSDT",
        "threshold": 0.01
-     }
+     },
+     "auto_stop": 0.0,
+     "auto_takeprofit": 0.0
    }
    ```
 3. Starte den Bot anschließend mit:
