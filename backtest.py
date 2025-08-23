@@ -33,6 +33,9 @@ def fetch_candles(symbol: str, start: str, end: str, interval: str = "1d") -> pd
         logger.error("Failed to fetch candles for %s: %s", symbol, exc)
         raise
     data = resp.json()
+    if not data:
+        logger.error("No candlestick data returned for %s", symbol)
+        return pd.DataFrame()
     rows = [
         {
             "Date": datetime.fromtimestamp(int(item[0]) / 1000),
@@ -44,7 +47,10 @@ def fetch_candles(symbol: str, start: str, end: str, interval: str = "1d") -> pd
         }
         for item in data
     ]
-    df = pd.DataFrame(rows).set_index("Date")
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return df
+    df.set_index("Date", inplace=True)
     return df
 
 
