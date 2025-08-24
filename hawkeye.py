@@ -1667,6 +1667,12 @@ def backtest_command(message):
         bot.reply_to(message, translate(message.chat.id, "usage_backtest"))
         return
     symbol, start, end = parts[0].upper(), parts[1], parts[2]
+    try:
+        datetime.strptime(start, "%Y-%m-%d")
+        datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        bot.reply_to(message, translate(message.chat.id, "invalid_date"))
+        return
     pair = normalize_symbol(symbol)
     if not pair:
         logger.info("No Binance pair for %s", symbol)

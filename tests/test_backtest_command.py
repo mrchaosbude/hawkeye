@@ -44,3 +44,37 @@ def test_backtest_command_normalizes_symbol(monkeypatch):
 
     assert called["symbol"] == "DOGEUSDT"
     assert "backtest_result" in messages
+
+
+def test_backtest_command_invalid_date(monkeypatch):
+    messages = []
+
+    class DummyBot:
+        def reply_to(self, message, text):
+            messages.append(text)
+
+        def send_message(self, *args, **kwargs):
+            pass
+
+        def send_photo(self, *args, **kwargs):
+            pass
+
+        def message_handler(self, *args, **kwargs):
+            def decorator(func):
+                return func
+            return decorator
+
+        def infinity_polling(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(hawkeye, "bot", DummyBot())
+    monkeypatch.setattr(hawkeye, "translate", lambda cid, key, **kwargs: key)
+
+    msg = types.SimpleNamespace(
+        text="/backtest btc 20210101 2021-02-01",
+        chat=types.SimpleNamespace(id=1),
+    )
+
+    hawkeye.backtest_command(msg)
+
+    assert messages == ["invalid_date"]

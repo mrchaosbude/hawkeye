@@ -42,6 +42,7 @@
   "usage_history": "⚠ Nutzung: /history SYMBOL",
   "history_error": "⚠ Chart für {symbol} konnte nicht erstellt werden.",
   "usage_backtest": "⚠ Nutzung: /backtest SYMBOL START ENDE",
+  "invalid_date": "⚠ Ungültiges Datum. Format YYYY-MM-DD verwenden.",
   "backtest_error": "⚠ Backtest für {symbol} fehlgeschlagen.",
   "backtest_result": "📈 {symbol}: ROI {roi:.2f}%, Maximaler Drawdown {drawdown:.2f}%",
   "menu_header": "📋 Menü:",
