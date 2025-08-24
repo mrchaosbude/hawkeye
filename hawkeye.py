@@ -1667,20 +1667,27 @@ def backtest_command(message):
         bot.reply_to(message, translate(message.chat.id, "usage_backtest"))
         return
     symbol, start, end = parts[0].upper(), parts[1], parts[2]
+    pair = normalize_symbol(symbol)
+    if not pair:
+        logger.info("No Binance pair for %s", symbol)
+        bot.reply_to(
+            message, translate(message.chat.id, "backtest_error", symbol=symbol)
+        )
+        return
     try:
-        roi, drawdown = run_backtest(symbol, start, end)
+        roi, drawdown = run_backtest(pair, start, end)
         bot.reply_to(
             message,
             translate(
                 message.chat.id,
                 "backtest_result",
-                symbol=symbol,
+                symbol=pair,
                 roi=roi * 100,
                 drawdown=drawdown * 100,
             ),
         )
     except Exception as e:  # pragma: no cover - broad exception for user input
-        logger.error("backtest command error for %s: %s", symbol, e)
+        logger.error("backtest command error for %s: %s", pair, e)
         bot.reply_to(
             message, translate(message.chat.id, "backtest_error", symbol=symbol)
         )
