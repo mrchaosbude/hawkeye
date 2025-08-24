@@ -18,8 +18,12 @@ BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
 
 def fetch_candles(symbol: str, start: str, end: str, interval: str = "1d") -> pd.DataFrame:
     """Fetch historical candlestick data from Binance."""
-    start_ms = int(datetime.fromisoformat(start).timestamp() * 1000)
-    end_ms = int(datetime.fromisoformat(end).timestamp() * 1000)
+    try:
+        start_ms = int(datetime.fromisoformat(start).timestamp() * 1000)
+        end_ms = int(datetime.fromisoformat(end).timestamp() * 1000)
+    except ValueError as exc:
+        logger.error("Invalid date format: %s - %s", start, end)
+        raise ValueError("Invalid date format; expected YYYY-MM-DD") from exc
     params = {
         "symbol": symbol.upper(),
         "interval": interval,
